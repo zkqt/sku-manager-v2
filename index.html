@@ -7,13 +7,13 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>供应链协同管理系统</title>
-  <link rel="stylesheet" href="style.css?v=20260909v246">
+  <link rel="stylesheet" href="style.css?v=20260909v247">
   <!-- 依赖本地化：避免中国大陆/国内部署环境下 jsdelivr 被墙或超时导致整页卡死、Excel 解析与云端同步失败；本地缺失时再回退 CDN -->
-  <script src="xlsx.full.min.js?v=20260909v246"></script>
+  <script src="xlsx.full.min.js?v=20260909v247"></script>
   <script>if(typeof window.XLSX==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
-  <script src="supabase.min.js?v=20260909v246"></script>
+  <script src="supabase.min.js?v=20260909v247"></script>
   <script>if(typeof window.supabase==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="lz-string.min.js?v=20260909v246"></script>
+  <script src="lz-string.min.js?v=20260909v247"></script>
   <script>if(typeof window.LZString==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"><\/script>');}</script>
 </head>
 <body>
@@ -29,10 +29,10 @@
             <span>SKU Manager <small>2.0</small></span>
           </div>
           <div class="home-nav-actions">
-            <button class="home-nav-btn" onclick="showUsageGuide()" title="使用说明">?</button>
-            <button class="home-nav-btn" onclick="Screen.show('screen-admin-login')" title="管理员入口">👤</button>
+            <!-- 帮助与管理员入口已分别下沉到 Hero 内容区与管理员角色卡 -->
           </div>
         </nav>
+        <aside id="home-hero-leaderboard" class="home-hero-leaderboard" aria-label="今日排行榜"></aside>
         <div class="home-hero-content">
           <div class="home-update-badge">
             <span class="dot"></span>
@@ -43,7 +43,6 @@
           <p class="home-desc">从销量库存到供应商交期，让每一个 SKU 的全链路状态清晰可控。</p>
           <div class="home-actions">
             <button class="home-btn-primary" onclick="scrollToRoles()">进入工作台 <span>→</span></button>
-            <button class="home-btn-secondary" onclick="showUsageGuide()">了解更多</button>
           </div>
         </div>
         <div class="home-scroll-hint" onclick="scrollToRoles()">
@@ -62,25 +61,20 @@
           <div class="role-card" data-role="operation">
             <span class="role-icon">📊</span>
             <span class="role-name">运营</span>
-            <span class="role-desc">查看销量库存发货</span>
           </div>
           <div class="role-card" data-role="plan">
             <span class="role-icon">📋</span>
             <span class="role-name">计划</span>
-            <span class="role-desc">库存预警 / 采购追踪</span>
           </div>
           <div class="role-card" data-role="purchase">
             <span class="role-icon">🛒</span>
             <span class="role-name">采购</span>
-            <span class="role-desc">填写交期 / 供应商追踪</span>
           </div>
           <div class="role-card" data-role="admin">
             <span class="role-icon">⚙️</span>
             <span class="role-name">管理员</span>
-            <span class="role-desc">上传数据 / 管理人员</span>
           </div>
         </div>
-        <div id="leaderboard-area" class="role-leaderboard-fixed"></div>
       </section>
     </div>
 
@@ -537,8 +531,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script src="config.js?v=20260909v246"></script>
-  <script src="sync_config.js?v=20260909v246"></script>
-  <script src="app.js?v=20260909v246"></script>
+  <script src="config.js?v=20260909v247"></script>
+  <script src="sync_config.js?v=20260909v247"></script>
+  <script src="app.js?v=20260909v247"></script>
 </body>
 </html>

@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v246';
+const APP_CODE_VERSION = '20260909v247';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -246,15 +246,12 @@ const Screen = {
   }
 };
 
-// ===== 排行榜（登录页显示） =====
-// mode: 'all' 显示昨日+今日四个榜；'today' 只显示今日两个榜（兼容旧动画调用）
+// ===== 排行榜（首页 Hero 右上角显示今日榜） =====
 function renderLeaderboard(mode) {
   mode = mode || 'all';
-  // 刷新数据更新时间（兼容旧容器 + 新 Hero 容器）
+  // 刷新数据更新时间（Hero 容器）
   const d = Store.getLastUpdateDate();
   const dateText = d || '--';
-  const updEl = $('#role-update-time');
-  if (updEl) updEl.textContent = d ? '数据更新至 ' + d : '暂无数据更新';
   const homeDate = $('#home-update-date');
   if (homeDate) homeDate.textContent = dateText;
   const yesterday = Store.nagLeaderboard('yesterday');
@@ -263,7 +260,7 @@ function renderLeaderboard(mode) {
   const renderBoard = (entries, label, icon, theme) => {
     if (entries.length === 0) return `<div class="leaderboard-card ${theme}"><div class="leaderboard-card-title"><span class="leaderboard-icon">${icon}</span>${label}</div><div class="leaderboard-empty">暂无数据</div></div>`;
     const top3 = entries.slice(0, 3);
-    const rest = [];
+    const rest = entries.slice(3, 10);
     const rankColor = ['gold', 'silver', 'bronze'];
     const podium = top3.map((e, i) => {
       const name = escapeHtml(e[0]); const count = e[1];
@@ -288,24 +285,15 @@ function renderLeaderboard(mode) {
     </div>`;
   };
 
-  let html = '';
-  if (mode === 'today') {
-    html = '<div class="leaderboards-row">' +
-      renderBoard(today.buyers, '今日人气王', '🔥', 'theme-red') +
-      renderBoard(today.users, '今日催更王', '⚡', 'theme-yellow') +
-      '</div>';
-  } else {
-    html = '<div class="leaderboards-row">' +
-      renderBoard(yesterday.buyers, '昨日人气王', '🔥', 'theme-red') +
-      renderBoard(yesterday.users, '昨日催更王', '⚡', 'theme-yellow') +
-      renderBoard(today.buyers, '今日人气王', '🔥', 'theme-red') +
-      renderBoard(today.users, '今日催更王', '⚡', 'theme-yellow') +
-      '</div>';
-  }
+  // Hero 区只展示今日榜（昨日榜不再单独展示）
+  const html = '<div class="leaderboards-row">' +
+    renderBoard(today.buyers, '今日人气王', '🔥', 'theme-red') +
+    renderBoard(today.users, '今日催更王', '⚡', 'theme-yellow') +
+    '</div>';
 
-  // 渲染到主区域排行榜容器
-  const mainEl = $('#leaderboard-area');
-  if (mainEl) mainEl.innerHTML = html;
+  // 渲染到 Hero 区排行榜容器
+  const heroEl = $('#home-hero-leaderboard');
+  if (heroEl) heroEl.innerHTML = html;
 }
 
 // ===== 弹窗 =====
@@ -7082,9 +7070,7 @@ function scrollToRoles() {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', () => {
-  Sync.init();
-  // 注意：页面加载时不再“阻塞式”自动拉取云端，避免 Supabase 不可达时拖慢页面与登录。
-  // 但会初始化 Sync（若内置/本地有配置则自动连云端），登录后若本地无数据再后台自动拉取。
+  // 页面加载时初始化 Sync（若内置/本地有配置则自动连云端），避免重复调用；登录后若本地无数据再后台自动拉取。
   Sync.init();
   // 一次性清理：移除旧的「9月发货明细底表(delivery)」本地缓存，避免清完云端后被本地旧数据重新推回。
   // 仅执行一次（用 localStorage 标记），后续不受任何影响。
