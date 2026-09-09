@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>供应链协同管理系统</title>
+  <link rel="stylesheet" href="style.css?v=20260908v240">
+  <!-- 依赖本地化：避免中国大陆/国内部署环境下 jsdelivr 被墙或超时导致整页卡死、Excel 解析与云端同步失败；本地缺失时再回退 CDN -->
+  <script src="xlsx.full.min.js?v=20260908v240"></script>
+  <script>if(typeof window.XLSX==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
+  <script src="supabase.min.js?v=20260908v240"></script>
+  <script>if(typeof window.supabase==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');}</script>
+  <script src="lz-string.min.js?v=20260908v240"></script>
+  <script>if(typeof window.LZString==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"><\/script>');}</script>
+</head>
+<body>
+  <div id="app">
+    <!-- ===== 角色选择页（含排行榜） ===== -->
+    <div id="screen-role" class="screen active">
+      <div class="role-splash" id="role-splash">
+        <h2>🏆 今日排行榜</h2>
+        <div id="leaderboard-area-splash" class="leaderboards-row"></div>
+      </div>
+      <div class="role-main" id="role-main">
+        <div class="role-header">
+          <h1>供应链协同管理系统</h1>
+          <p><span style="font-size:11px;color:#aaa;">v5.7</span></p>
+        </div>
+        <div class="role-update-time" id="role-update-time"></div>
+        <div class="role-cards">
+          <div class="role-card" data-role="admin">
+            <span class="role-icon">⚙️</span>
+            <span class="role-name">管理员</span>
+            <span class="role-desc">上传数据 / 管理人员</span>
+          </div>
+          <div class="role-card" data-role="operation">
+            <span class="role-icon">📊</span>
+            <span class="role-name">运营</span>
+            <span class="role-desc">查看销量库存发货</span>
+          </div>
+          <div class="role-card" data-role="plan">
+            <span class="role-icon">📋</span>
+            <span class="role-name">计划</span>
+            <span class="role-desc">库存预警 / 采购追踪</span>
+          </div>
+          <div class="role-card" data-role="purchase">
+            <span class="role-icon">🛒</span>
+            <span class="role-name">采购</span>
+            <span class="role-desc">填写交期 / 供应商追踪</span>
+          </div>
+        </div>
+        <div id="leaderboard-area" class="role-leaderboard-fixed"></div>
+      </div>
+    </div>
+
+    <!-- ===== 管理员登录 ===== -->
+    <div id="screen-admin-login" class="screen">
+      <div class="login-box">
+        <h2>管理员登录</h2>
+        <input type="password" id="admin-pwd" placeholder="请输入管理密码" autocomplete="off">
+        <button id="btn-admin-login" class="btn-primary">进入管理后台</button>
+        <p class="back-link"><a href="#" onclick="Screen.show('screen-role');return false">← 返回</a></p>
+      </div>
+    </div>
+
+    <!-- ===== 姓名登录（采购/计划/运营） ===== -->
+    <div id="screen-name-login" class="screen">
+      <div class="login-box-simple">
+        <h2 id="name-login-title">请输入姓名</h2>
+        <input type="text" id="user-name-input" placeholder="请输入你的姓名" autocomplete="off" autofocus>
+        <div id="user-pwd-wrap" style="display:none;margin-top:10px">
+          <input type="password" id="user-pwd-input" placeholder="采购密码（默认123）" autocomplete="off" style="width:100%">
+        </div>
+        <button id="btn-name-login" class="btn-primary" style="margin-top:14px">进入</button>
+        <p id="name-login-error" class="error-msg"></p>
+        <p class="back-link"><a href="#" onclick="Screen.show('screen-role');return false">← 返回</a></p>
+      </div>
+    </div>
+
+    <!-- ===== 管理员面板 ===== -->
+    <div id="screen-admin" class="screen">
+      <div class="topbar">
+        <h1>管理员控制台</h1>
+        <div class="topbar-right">
+          <span id="admin-data-status" class="data-status"></span>
+          <button class="btn-sm" onclick="editUsageGuide()" title="编辑使用说明（管理员）">📖 编辑使用说明</button>
+          <button class="btn-sm" onclick="showUsageGuide()" title="查看使用说明">使用说明</button>
+          <button class="btn-sm" onclick="Screen.show('screen-role')">退出</button>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab active" data-tab="upload">📊 数据上传</div>
+        <div class="tab" data-tab="personnel">👥 人员管理</div>
+        <div class="tab" data-tab="history">📜 历史记录</div>
+        <div class="tab" data-tab="sync">☁️ 数据同步</div>
+      </div>
+      <div id="tab-upload" class="tab-content active">
+        <div id="update-times-list" class="update-times-list" style="padding:8px 24px;background:var(--card-bg);border-radius:var(--radius);margin-bottom:12px;box-shadow:var(--shadow);"></div>
+        <div class="upload-grid">
+          <div class="upload-zone" data-filetype="sales">
+            <h3>📈 计划用销量库存目标大表（云端同步·增量更新）</h3>
+            <p class="upload-desc">主数据表，包含渠道/SKU/人员分配/销量/库存；管理员统一上传后按渠道+SKU等键增量合并，运营/计划/采购自动拉取云端数据</p>
+            <div class="upload-mode" style="margin:8px 0;font-size:12px;color:var(--text-muted);">
+              <label style="margin-right:14px;cursor:pointer;">
+                <input type="radio" name="sales-upload-mode" value="incremental" checked onchange="AdminUI.onSalesModeChange(this.value)"> 增量更新（推荐）
+              </label>
+              <label style="cursor:pointer;">
+                <input type="radio" name="sales-upload-mode" value="overwrite" onchange="AdminUI.onSalesModeChange(this.value)"> 全部覆盖
+              </label>
+            </div>
+            <p class="upload-mode-desc" id="sales-mode-desc" style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">按 渠道+SKU+FBA+组合+PO+国家 合并；同键只更新销量/库存/目标等字段，旧表有而新表没有的行保留。</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('sales', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <span class="upload-status" id="status-sales"></span>
+          </div>
+          <div class="upload-zone" data-filetype="delivery">
+            <h3>📦 9月发货与采购交付明细（管理员上传，同步云端）</h3>
+            <p class="upload-desc">发货目标/交付/装柜/物流数据，上传后全站自动同步</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('delivery', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" id="ov-delivery"> 覆盖上传（清空旧数据，只保留本次文件）
+            </label>
+            <span class="upload-status" id="status-delivery"></span>
+            <button type="button" class="btn-secondary btn-sm" style="margin-top:8px" onclick="AdminUI.resetDeliveryBaseline()">🔄 将当前发货明细设为增减基线</button>
+            <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">点击后，绿+/红- 增减将对比你刚上传的这版（不再对比更早的 8 月版），并同步到所有电脑。</p>
+          </div>
+          <div class="upload-zone" data-filetype="supplier">
+            <h3>🏭 供应商追踪情况</h3>
+            <p class="upload-desc">供应商/工厂/采购员/交期数据</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('supplier', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" id="ov-supplier"> 覆盖上传（不保留旧采购交期）
+            </label>
+            <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">未勾选时：仅更新本次文件中的 SKU，保留原采购交期；未包含的 SKU 保持原样。</p>
+            <button class="btn-sm" style="margin-top:8px;background:#dc3545;color:#fff;border-color:#dc3545" onclick="AdminUI.clearSupplier()" title="清空全部供应商追踪数据（不可恢复）">🗑️ 清空供应商追踪</button>
+            <span class="upload-status" id="status-supplier"></span>
+          </div>
+          <div class="upload-zone" data-filetype="cancel">
+            <h3>📦 供应商库存</h3>
+            <p class="upload-desc">SKU + 供应商库存</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('cancel', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" id="ov-cancel" checked> 覆盖上传（清空旧数据，只保留本次文件）
+            </label>
+            <span class="upload-status" id="status-cancel"></span>
+          </div>
+          <div class="upload-zone" data-filetype="replenish">
+            <h3>📝 需补订单</h3>
+            <p class="upload-desc">采购查看（仅查看）</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('replenish', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" id="ov-replenish"> 覆盖上传（清空旧数据，只保留本次文件）
+            </label>
+            <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">未勾选时：仅更新本次文件中的 SKU+供应商，未包含的 SKU 保持原样。</p>
+            <span class="upload-status" id="status-replenish"></span>
+            <button class="btn-sm" style="margin-top:8px;background:#dc3545;color:#fff;border-color:#dc3545" onclick="AdminUI.clearReplenish()" title="清空全部需补订单（不可恢复）">🗑️ 清空需补订单</button>
+          </div>
+          <div class="upload-zone" data-filetype="supply">
+            <h3>🔗 供货清单</h3>
+            <p class="upload-desc">渠道SKU/供应商/起订量/品类/供应商状态/采购负责人/后补日期</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('supply', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" id="ov-supply" checked> 覆盖上传（清空旧数据，只保留本次文件）
+            </label>
+            <span class="upload-status" id="status-supply"></span>
+          </div>
+          <div class="upload-zone" data-filetype="whitelist">
+            <h3>📋 白名单</h3>
+            <p class="upload-desc">供应商/品类/采购负责人/供应商状态</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('whitelist', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" id="ov-whitelist" checked> 覆盖上传（清空旧白名单行，并用本文件替换采购负责人名单）
+            </label>
+            <span class="upload-status" id="status-whitelist"></span>
+          </div>
+          <div class="upload-zone" data-filetype="goods">
+            <h3>📦 货品表（同步云端）</h3>
+            <p class="upload-desc">SKU + 品类；采购页品类为空时按 SKU 自动用此表补齐，货品表也没有则留空</p>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('goods', this.files[0])">
+              <span class="btn-primary btn-sm">选择文件</span>
+            </label>
+            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+              <input type="checkbox" id="ov-goods" checked> 覆盖上传（清空旧数据，只保留本次文件）
+            </label>
+            <span class="upload-status" id="status-goods"></span>
+          </div>
+          <div class="upload-zone" data-filetype="announcement">
+            <h3>📢 采购滚动条公告（同步云端）</h3>
+            <p class="upload-desc">编辑后所有采购员页面顶部的滚动条内容实时更新。留空则使用默认文案。</p>
+            <button class="btn-primary btn-sm" onclick="editAnnouncement()">✏️ 编辑滚动条公告</button>
+          </div>
+          <div class="upload-zone" data-filetype="op_announcement">
+            <h3>📢 运营滚动条公告（同步云端）</h3>
+            <p class="upload-desc">编辑后所有运营页面顶部的滚动条内容实时更新。留空则使用默认文案。</p>
+            <button class="btn-primary btn-sm" onclick="editOperationAnnouncement()">✏️ 编辑滚动条公告</button>
+          </div>
+        </div>
+        <div id="upload-summary" class="upload-summary"></div>
+        <div id="debug-panel" style="margin-top:12px;padding:10px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;font-size:12px;max-height:200px;overflow-y:auto;display:none;">
+          <div style="font-weight:bold;margin-bottom:6px;color:#666;">📋 解析日志 <button onclick="document.getElementById('debug-log').innerHTML=''" style="float:right;font-size:11px;cursor:pointer;border:none;background:none;color:#999;">清空</button></div>
+          <div id="debug-log" style="font-family:monospace;line-height:1.6;color:#333;"></div>
+        </div>
+        <button onclick="const p=document.getElementById('debug-panel');p.style.display=p.style.display==='none'?'block':'none';" style="margin-top:6px;font-size:12px;cursor:pointer;border:1px solid #ccc;background:#f9f9f9;padding:4px 10px;border-radius:4px;">🔍 显示/隐藏解析日志</button>
+      </div>
+      <div id="tab-personnel" class="tab-content">
+        <div class="personnel-section">
+          <div class="personnel-col">
+            <h3>采购员</h3>
+            <div id="personnel-purchase" class="personnel-list"></div>
+            <div class="personnel-add">
+              <textarea id="add-purchase-names" placeholder="每行一个名字，批量添加" rows="3"></textarea>
+              <button class="btn-primary btn-sm" onclick="AdminUI.batchAddPersonnel('purchase')">批量添加</button>
+              <button class="btn-warn btn-sm" onclick="AdminUI.batchDeletePersonnel('purchase')">批量删除</button>
+            </div>
+          </div>
+          <div class="personnel-col">
+            <h3>计划员</h3>
+            <div id="personnel-plan" class="personnel-list"></div>
+            <div class="personnel-add">
+              <textarea id="add-plan-names" placeholder="每行一个名字，批量添加" rows="3"></textarea>
+              <button class="btn-primary btn-sm" onclick="AdminUI.batchAddPersonnel('plan')">批量添加</button>
+              <button class="btn-warn btn-sm" onclick="AdminUI.batchDeletePersonnel('plan')">批量删除</button>
+            </div>
+          </div>
+          <div class="personnel-col">
+            <h3>运营</h3>
+            <div id="personnel-operation" class="personnel-list"></div>
+            <div class="personnel-add">
+              <textarea id="add-operation-names" placeholder="每行一个名字，批量添加" rows="3"></textarea>
+              <button class="btn-primary btn-sm" onclick="AdminUI.batchAddPersonnel('operation')">批量添加</button>
+              <button class="btn-warn btn-sm" onclick="AdminUI.batchDeletePersonnel('operation')">批量删除</button>
+            </div>
+          </div>
+        </div>
+        <div class="personnel-section" style="margin-top:24px;">
+          <div class="personnel-col">
+            <h3>采购管理员</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">登录采购工作台后，可查看全部采购员数据</p>
+            <div id="personnel-admin-purchase" class="personnel-list"></div>
+            <div class="personnel-add">
+              <input type="text" id="add-admin-purchase-name" placeholder="管理员姓名" style="width:100%;margin-bottom:6px">
+              <button class="btn-primary btn-sm" onclick="AdminUI.addAdmin('purchase')">添加</button>
+            </div>
+          </div>
+          <div class="personnel-col">
+            <h3>计划管理员</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">登录计划工作台后，可查看全部计划员数据</p>
+            <div id="personnel-admin-plan" class="personnel-list"></div>
+            <div class="personnel-add">
+              <input type="text" id="add-admin-plan-name" placeholder="管理员姓名" style="width:100%;margin-bottom:6px">
+              <button class="btn-primary btn-sm" onclick="AdminUI.addAdmin('plan')">添加</button>
+            </div>
+          </div>
+          <div class="personnel-col">
+            <h3>运营管理员</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">登录运营工作台后，可查看全部运营数据</p>
+            <div id="personnel-admin-operation" class="personnel-list"></div>
+            <div class="personnel-add">
+              <input type="text" id="add-admin-operation-name" placeholder="管理员姓名" style="width:100%;margin-bottom:6px">
+              <button class="btn-primary btn-sm" onclick="AdminUI.addAdmin('operation')">添加</button>
+            </div>
+          </div>
+        </div>
+        <div class="personnel-section" style="margin-top:24px;">
+          <div class="personnel-col" style="grid-column:1 / -1">
+            <h3>📦 品类负责人</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">品类负责人从首页「采购」端输入姓名登录，登录后查看自己负责品类下【所有采购员】的供应商追踪与需补订单（只读，单独成表，免密码免上传）。品类名称需与供应商追踪表中的"品类"列完全一致。</p>
+            <div id="personnel-catmgr" class="personnel-list"></div>
+            <div class="personnel-add" style="display:flex;flex-direction:column;gap:6px;max-width:480px">
+              <input type="text" id="add-catmgr-name" placeholder="品类负责人姓名" style="width:100%">
+              <input type="text" id="add-catmgr-cats" list="catmgr-cat-options" placeholder="负责的品类（多个用逗号或换行分隔，如：美妆,个护）" style="width:100%">
+              <datalist id="catmgr-cat-options"></datalist>
+              <button class="btn-primary btn-sm" style="align-self:flex-start" onclick="AdminUI.addCategoryManager()">添加品类负责人</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="tab-history" class="tab-content">
+        <div class="history-filters">
+          <input type="text" id="history-search" placeholder="搜索历史记录..." oninput="AdminUI.renderHistory()">
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </div>
+      <div id="tab-sync" class="tab-content">
+        <div class="sync-section">
+          <h3>数据导出 / 导入</h3>
+          <p>导出当前所有数据为 JSON 文件，可在其他设备上导入恢复。导入时会覆盖本地数据。</p>
+          <button class="btn-primary" onclick="AdminUI.exportData()">⬇️ 导出全部数据</button>
+          <button class="btn-primary" onclick="AdminUI.exportAllSupplier()" style="margin-left:8px">📋 导出所有采购的供应商追踪表</button>
+          <label class="file-label">
+            <input type="file" accept=".json" onchange="AdminUI.importData(this.files[0])">
+            <span class="btn-primary">⬆️ 导入数据</span>
+          </label>
+          <h3 style="margin-top:30px">⚠️ 危险操作</h3>
+          <p>清除所有上传的数据、人员名单和历史记录。此操作不可恢复！</p>
+          <button class="btn-warn" style="padding:8px 18px;font-size:14px" onclick="AdminUI.clearAllData()">🗑️ 清除所有数据</button>
+          <h3 style="margin-top:30px">实时同步设置（Supabase）</h3>
+          <p>配置后会自动接入云端：管理员上传任意文件即同步到 Supabase，所有成员打开页面自动拉取最新数据，<strong>无需再手动重新上传</strong>。</p>
+          <div class="sync-config">
+            <label>Supabase URL</label>
+            <input type="text" id="supabase-url" placeholder="https://xxxx.supabase.co">
+            <label>Supabase Anon Key</label>
+            <div class="key-input-wrap">
+              <input type="password" id="supabase-key" placeholder="eyJhbGci..." autocomplete="off">
+              <button type="button" class="eye-btn" onclick="AdminUI.toggleKeyVisibility()" title="显示/隐藏 Key">👁️</button>
+            </div>
+            <button class="btn-primary" onclick="AdminUI.saveSyncConfig()">保存配置并同步</button>
+            <span id="sync-status"></span>
+
+            <h3 style="margin-top:22px">选择要同步的表格</h3>
+            <p style="color:var(--text-muted);font-size:12px;margin:4px 0 8px">只同步勾选的表格，未勾选的不会上传也不会自动同步。默认全选。修改后点上方「保存配置并同步」生效。</p>
+            <div id="sync-type-list" class="sync-type-list"></div>
+            <div style="margin-top:6px;display:flex;gap:8px">
+              <button class="btn-sm" onclick="AdminUI.selectAllTypes(true)">全选</button>
+              <button class="btn-sm" onclick="AdminUI.selectAllTypes(false)">全不选</button>
+            </div>
+
+            <div id="sync-progress-wrap" style="display:none;margin-top:10px;">
+              <div class="sync-progress-bar"><div id="sync-progress-fill" style="width:0%"></div></div>
+              <div id="sync-progress-text" style="font-size:12px;color:var(--text-muted);margin-top:4px;">准备同步...</div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn-sm" onclick="Sync.pushAll()">☁️ 一键同步到云端</button>
+              <button class="btn-sm" onclick="Sync.pullAndRefresh()">⬇️ 从云端拉取</button>
+            </div>
+            <p style="margin-top:10px;color:var(--text-muted);font-size:12px">
+              首次使用：① 在 Supabase 后台 SQL Editor 执行 <code>supabase_schema.sql</code> 建表（含大文件分片表）；② 把 Project URL 和 anon key 填上方保存；③ 点"一键同步到云端"把当前数据上传即可。大文件会自动拆分上传，避免超时。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 采购面板 ===== -->
+    <div id="screen-purchase" class="screen">
+      <div class="topbar">
+        <h1>🛒 采购工作台</h1>
+        <div class="topbar-right">
+          <span id="purchase-username" class="user-badge"></span>
+          <span id="purchase-last-update" class="data-status" style="font-size:11px"></span>
+          <button class="btn-sm" onclick="PurchaseUI.changePassword()" title="修改本机登录密码">🔑 修改密码</button>
+          <button class="btn-sm" onclick="Sync.pullAndRefresh()" title="从 Supabase 拉取最新数据">🔄 云端刷新</button>
+          <button class="btn-sm" onclick="showUsageGuide()" title="使用说明">📖 使用说明</button>
+          <button class="btn-sm" onclick="Screen.show('screen-role')">退出</button>
+        </div>
+      </div>
+      <div id="purchase-marquee"></div>
+      <div class="purchase-dashboard">
+        <div class="purchase-dash-left">
+          <div class="purchase-nag-board" id="purchase-nag-board"></div>
+          <div id="purchase-alerts"></div>
+        </div>
+        <div class="purchase-dash-right">
+          <div class="dash-section-title">🏭 工厂快捷导航</div>
+          <div class="factory-summary-row">
+            <div class="factory-summary-box nag-box">
+              <div class="factory-summary-num" id="factory-nag-count">0</div>
+              <div class="factory-summary-label">被催工厂</div>
+            </div>
+            <div class="factory-summary-box unfilled-box">
+              <div class="factory-summary-num" id="factory-unfilled-count">0</div>
+              <div class="factory-summary-label">交期未填工厂</div>
+            </div>
+          </div>
+          <div id="purchase-factory-stats"></div>
+          <div class="factory-legend">
+            <span class="factory-legend-item" title="今日该工厂被催更次数">
+              <span class="factory-legend-dot danger"></span>被催次数
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="tabs" id="purchase-tabs">
+        <div class="tab active" data-ptab="supplier" onclick="PurchaseUI.switchTab('supplier')">🏭 供应商追踪表（填写）</div>
+        <div class="tab" data-ptab="replenish" onclick="PurchaseUI.switchTab('replenish')">📝 需补订单（查看）</div>
+        <span id="purchase-cat-tabs"></span>
+      </div>
+      <div id="purchase-tab-contents">
+      <div id="ptab-supplier" class="tab-content active">
+        <div class="table-toolbar" style="flex-wrap:wrap;gap:8px;">
+          <div class="search-wrap">
+          <input type="text" id="purchase-search-sku" placeholder="🔍 搜索SKU" oninput="PurchaseUI.onSearchInput()">
+          <button type="button" class="search-clear" onclick="PurchaseUI.clearSearch('purchase-search-sku')" title="清除">×</button>
+        </div>
+        <button type="button" class="btn-sm" style="margin-left:8px" onclick="openSkuBatchModal('PurchaseUI')" title="批量粘贴 SKU 搜索">📋 批量搜索</button>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+            <button class="btn-primary btn-sm" style="background:var(--primary);font-size:13px;padding:8px 14px" onclick="PurchaseUI.exportPurchaseTracking()">📤 导出Excel</button>
+            <label class="file-label">
+              <input type="file" accept=".xlsx,.xls" onchange="PurchaseUI.batchUploadDates(this.files[0])">
+              <span class="btn-primary btn-sm" style="background:var(--warn);font-size:13px;padding:8px 14px">📥 批量上传</span>
+            </label>
+          </div>
+        </div>
+        <p style="padding:0 24px 6px;color:var(--text-muted);font-size:12px">💡 点击单元格编辑。数量=数字，交期=日期（如 2026/8/7 或 9月7日），备注=文本</p>
+        <div id="purchase-supplier-table" class="data-table-wrap"></div>
+        <div id="purchase-supplier-pagination" class="pagination-wrap"></div>
+      </div>
+      <div id="ptab-replenish" class="tab-content">
+        <div class="table-toolbar" style="flex-wrap:wrap;gap:8px;align-items:center;">
+          <div class="search-wrap">
+            <input type="text" id="purchase-replenish-search-sku" placeholder="🔍 搜索SKU" oninput="PurchaseUI.onReplenishSearchInput()">
+            <button type="button" class="search-clear" onclick="PurchaseUI.clearReplenishSearch()" title="清除">×</button>
+          </div>
+          <button type="button" class="btn-sm" style="margin-left:8px" onclick="openSkuBatchModal('PurchaseUI')" title="批量粘贴 SKU 搜索">📋 批量搜索</button>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+            <button class="btn-export-replenish" onclick="PurchaseUI.exportReplenish()">📥 导出全部需补订单</button>
+            <button class="btn-sm" onclick="PurchaseUI.clearReplenishFilters()">清除筛选</button>
+          </div>
+        </div>
+        <div id="purchase-replenish-filters"></div>
+        <div id="purchase-replenish-table" class="data-table-wrap"></div>
+        <div id="purchase-replenish-pagination" class="pagination-wrap"></div>
+      </div>
+      </div>
+      <div id="purchase-cat-tab-contents"></div>
+    </div>
+
+    <!-- ===== 计划面板 ===== -->
+    <div id="screen-plan" class="screen">
+      <div class="topbar">
+        <h1>📋 计划工作台</h1>
+        <div class="topbar-right">
+          <span id="plan-username" class="user-badge"></span>
+          <span id="plan-last-update" class="data-status" style="font-size:11px"></span>
+          <button class="btn-sm" onclick="Sync.pullAndRefresh()" title="从 Supabase 拉取最新数据">🔄 云端刷新</button>
+          <button class="btn-sm" onclick="showUsageGuide()" title="使用说明">📖 使用说明</button>
+          <button class="btn-sm" onclick="Screen.show('screen-role')">退出</button>
+        </div>
+      </div>
+      <div id="plan-alerts" class="alerts-bar"></div>
+      <div id="plan-buyer-unfilled" class="alerts-bar" style="padding-top:0"></div>
+      <div class="table-toolbar">
+        <div class="search-wrap">
+          <input type="text" id="plan-search-sku" placeholder="🔍 搜索SKU" oninput="PlanUI.renderOverview()">
+          <button type="button" class="search-clear" onclick="PlanUI.clearSkuFilter()" title="清除">×</button>
+        </div>
+        <button type="button" class="btn-sm" style="margin-left:6px" onclick="openSkuBatchModal('PlanUI')" title="批量粘贴 SKU 搜索">📋 批量搜索</button>
+      </div>
+      <div id="plan-table" class="data-table-wrap"></div>
+      <div id="plan-pagination" class="pagination-wrap"></div>
+    </div>
+
+    <!-- ===== 运营面板 ===== -->
+    <div id="screen-operation" class="screen">
+      <div class="topbar">
+        <h1>📊 运营工作台</h1>
+        <div class="topbar-right">
+          <span id="op-username" class="user-badge"></span>
+          <span id="op-last-update" class="data-status" style="font-size:11px"></span>
+          <button class="btn-sm" onclick="Sync.pullAndRefresh()" title="从 Supabase 拉取最新数据">🔄 云端刷新</button>
+          <button class="btn-sm" onclick="showUsageGuide()" title="使用说明">📖 使用说明</button>
+          <button class="btn-sm" onclick="Screen.show('screen-role')">退出</button>
+        </div>
+      </div>
+      <div id="operation-announcement-marquee"></div>
+      <div class="table-toolbar">
+        <div class="search-wrap">
+          <input type="text" id="op-search-sku" placeholder="🔍 搜索SKU" oninput="OperationUI.renderTable()">
+          <button type="button" class="search-clear" onclick="OperationUI.clearSkuFilter()" title="清除">×</button>
+        </div>
+        <button type="button" class="btn-sm" style="margin-left:6px" onclick="openSkuBatchModal('OperationUI')" title="批量粘贴 SKU 搜索">📋 批量搜索</button>
+      </div>
+      <div id="operation-table" class="data-table-wrap"></div>
+      <div id="operation-pagination" class="pagination-wrap"></div>
+    </div>
+
+    <!-- ===== 弹窗：采购负责人详情 ===== -->
+    <div id="modal-overlay" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 id="modal-title"></h3>
+          <button onclick="Modal.close()">✕</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+  </div>
+  <script src="config.js?v=20260908v240"></script>
+  <script src="sync_config.js?v=20260908v240"></script>
+  <script src="app.js?v=20260908v240"></script>
+</body>
+</html>
