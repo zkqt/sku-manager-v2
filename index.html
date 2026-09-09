@@ -7,13 +7,13 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>供应链协同管理系统</title>
-  <link rel="stylesheet" href="style.css?v=20260909v244">
+  <link rel="stylesheet" href="style.css?v=20260909v245">
   <!-- 依赖本地化：避免中国大陆/国内部署环境下 jsdelivr 被墙或超时导致整页卡死、Excel 解析与云端同步失败；本地缺失时再回退 CDN -->
-  <script src="xlsx.full.min.js?v=20260909v244"></script>
+  <script src="xlsx.full.min.js?v=20260909v245"></script>
   <script>if(typeof window.XLSX==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
-  <script src="supabase.min.js?v=20260909v244"></script>
+  <script src="supabase.min.js?v=20260909v245"></script>
   <script>if(typeof window.supabase==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="lz-string.min.js?v=20260909v244"></script>
+  <script src="lz-string.min.js?v=20260909v245"></script>
   <script>if(typeof window.LZString==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"><\/script>');}</script>
 </head>
 <body>
@@ -399,6 +399,13 @@
         <div class="tab" data-ptab="replenish" onclick="PurchaseUI.switchTab('replenish')">📝 需补订单（查看）</div>
         <span id="purchase-cat-tabs"></span>
       </div>
+      <div class="purchase-batch-toggle" id="purchase-batch-toggle-wrap" style="display:none;padding:8px 24px 0">
+        <label style="font-size:13px;color:var(--text-muted);cursor:pointer;user-select:none">
+          <input type="checkbox" id="purchase-show-all" onchange="PurchaseUI.toggleShowAll(this.checked)">
+          显示全部历史批次（含非本次上传的 SKU）
+        </label>
+        <span id="purchase-batch-info" style="font-size:12px;color:var(--text-muted);margin-left:8px"></span>
+      </div>
       <div id="purchase-tab-contents">
       <div id="ptab-supplier" class="tab-content active">
         <div class="table-toolbar" style="flex-wrap:wrap;gap:8px;">
@@ -502,8 +509,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script src="config.js?v=20260909v244"></script>
-  <script src="sync_config.js?v=20260909v244"></script>
-  <script src="app.js?v=20260909v244"></script>
+  <script src="config.js?v=20260909v245"></script>
+  <script src="sync_config.js?v=20260909v245"></script>
+  <script src="app.js?v=20260909v245"></script>
 </body>
 </html>

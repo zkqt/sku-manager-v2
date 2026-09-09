@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v244';
+const APP_CODE_VERSION = '20260909v245';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -668,6 +668,7 @@ const SYNC_TYPES = [
   { key: 'usage_guide', label: '使用说明' },
   { key: 'delivery_first', label: '发货明细第一版', hidden: true }, // 隐藏：首次上传的 delivery 快照
   { key: 'delivery_diff', label: '发货差异基线', hidden: true },   // 隐藏：最新版与第一版的差异地图
+  { key: 'supplier_meta', label: '供应商上传批次(系统)', hidden: true }, // 隐藏：记录各采购员最近一次上传 supplier 的批次号
 ];
 
 // 用户选择要同步的表格（持久化在 localStorage: skuv2_sync_sel）
@@ -3713,6 +3714,19 @@ const AdminUI = {
         const old = Store.getData(fileType);
         let merged;
         if (fileType === 'supplier') {
+          // 给本次上传的每一行打上「批次标记」：_batchId（批次号）+ _uploadBy（上传人），
+          // 供采购看板「只看我本次上传」过滤。合并时新表行的标记会覆盖旧表同名 SKU，
+          // 旧表孤儿 SKU 保留原批次标记不变。
+          const batchId = 'b_' + Date.now() + '_' + String(result.fileName || 'file').replace(/[^\w.\-]/g, '');
+          const uploadBy = currentUserName || '';
+          result.data = result.data.map(r => Object.assign({}, r, { _batchId: batchId, _uploadBy: uploadBy }));
+          // 记录当前上传人最近一次批次到云端 supplier_meta（换电脑/多端同步可见）
+          try {
+            const meta = Store.getData('supplier_meta') || {};
+            meta[uploadBy] = { batchId, uploadedAt: new Date().toISOString(), fileName: result.fileName || '', count: result.data.length };
+            syncPromises.push(Store.setData('supplier_meta', meta));
+          } catch (e) { debugLog('[handleUpload] supplier_meta 记录失败: ' + (e && e.message)); }
+
           // 上传前先从云端找回采购员已填的交期/备注（按 SKU 关联），补回本地，
           // 避免换电脑/本地丢失时这些字段被新表覆盖掉。云端的采购字段来自各工作台手动编辑并同步回云端。
           let baseOld = old;
@@ -4444,9 +4458,16 @@ const PurchaseUI = {
     this.isCategoryManager = !!mgr;
     this.categories = (mgr && mgr.categories) ? mgr.categories.slice() : [];
     this.activeTab = 'supplier';
+    this._showAllSupplier = false; // 默认只看本次上传批次
     const badge = this.isAdmin ? ` <span class="admin-badge">管理员</span>` : '';
     const catBadge = this.isCategoryManager ? ` <span class="admin-badge" style="background:#7c3aed">品类负责人</span>` : '';
     $('#purchase-username').innerHTML = escapeHtml(userName) + badge + catBadge;
+    // 「显示全部历史批次」开关仅对普通采购员显示（管理员/品类负责人本就看全部，无此概念）
+    const toggleWrap = $('#purchase-batch-toggle-wrap');
+    if (toggleWrap) toggleWrap.style.display = (this.isAdmin || this.isCategoryManager) ? 'none' : 'inline-block';
+    const chk = $('#purchase-show-all');
+    if (chk) { chk.checked = false; }
+    this._updateBatchInfo();
     // 采购员筛选仅对管理员/品类负责人显示（普通采购只看自己，无需筛选）
     const buyerWrap = $('#purchase-buyer-filter-wrap');
     if (buyerWrap) buyerWrap.style.display = (this.isAdmin || this.isCategoryManager) ? 'inline-block' : 'none';
@@ -4483,6 +4504,28 @@ const PurchaseUI = {
   renderLastUpdate() {
     const el = $('#purchase-last-update');
     if (el) el.textContent = '数据更新: ' + Store.getLastUpdateText();
+  },
+
+  // 切换「显示全部历史批次」开关：重新渲染供应商主表 + 更新批次提示
+  toggleShowAll(checked) {
+    this._showAllSupplier = !!checked;
+    this._updateBatchInfo();
+    if (this.activeTab === 'supplier') this.renderSupplier();
+    else if (this.activeTab === 'replenish') this.renderReplenish();
+    else this.renderCategorySupplierBySafeId(this.activeTab);
+  },
+
+  // 在开关旁显示当前上传批次信息（文件名 + 上传时间），让用户确认范围
+  _updateBatchInfo() {
+    const el = $('#purchase-batch-info');
+    if (!el) return;
+    const meta = Store.getData('supplier_meta') || {};
+    const m = this.userName ? meta[this.userName] : null;
+    if (!m) { el.textContent = '（未记录上传批次，显示全部）'; return; }
+    const d = m.uploadedAt ? new Date(m.uploadedAt) : null;
+    const ts = d && !isNaN(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+    const fn = m.fileName ? `「${m.fileName}」` : '';
+    el.textContent = this._showAllSupplier ? '（当前：显示全部历史）' : `（当前批次：${fn}${ts} · ${m.count || ''} 条）`;
   },
 
   // ===== 品类负责人视图：在采购面板内为每个负责品类增加 Tab =====
@@ -4884,12 +4927,24 @@ const PurchaseUI = {
       return 0;
     });
 
-    // 权限过滤：与供应商追踪表一致（采购员 / 品类负责人主表均只看带自己名字的 SKU；
-    // 品类负责人负责品类的全量数据在对应品类分表查看）。
+    // 权限过滤：默认只看「我本次上传」的批次；找不到批次记录时降级为 buyer 精确匹配，兼容旧数据。
     if (!this.isAdmin) {
       const before = rows.length;
-      rows = rows.filter(r => buyerExact(r.buyer, this.userName));
-      console.log(`[Purchase] ${this.userName} 行数过滤: ${before} -> ${rows.length}`);
+      if (this.isCategoryManager) {
+        // 品类负责人看负责品类的全量数据，不按「上传批次」过滤（它本就不是只看自己上传）
+        rows = rows.filter(r => buyerExact(r.buyer, this.userName));
+        console.log(`[Purchase] ${this.userName} 品类负责视角过滤: ${before} -> ${rows.length}`);
+      } else {
+        const meta = Store.getData('supplier_meta') || {};
+        const lastBatch = this.userName ? (meta[this.userName] && meta[this.userName].batchId) : '';
+        const showAll = this._showAllSupplier;
+        rows = rows.filter(r => {
+          if (!buyerExact(r.buyer, this.userName)) return false;
+          if (showAll || !lastBatch) return true; // 无批次记录时降级显示全部 buyer=我的，避免 0 条
+          return r._batchId === lastBatch;
+        });
+        console.log(`[Purchase] ${this.userName} 批次过滤(showAll=${!!showAll}, lastBatch=${lastBatch || '无'}): ${before} -> ${rows.length}`);
+      }
     }
     // 把销量大表(sales)的 9月交付字段匹配到供应商行（纯数值，无绿+/红- 差异），供采购主表展示
     rows = this.attachSalesMetrics(rows);
