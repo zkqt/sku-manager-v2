@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v249';
+const APP_CODE_VERSION = '20260909v250';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -1899,10 +1899,42 @@ const Store = {
   }
 };
 
+// ===== XLSX 懒加载：首屏不下载 xlsx(862K)，主页渲染后空闲预加载；上传/导出前 ensureXLSX 兜底 =====
+let _xlsxPromise = null;
+function ensureXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  if (_xlsxPromise) return _xlsxPromise;
+  _xlsxPromise = new Promise((resolve, reject) => {
+    const tryLoad = (src, ok, fail) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = ok;
+      s.onerror = fail;
+      document.head.appendChild(s);
+    };
+    const fallback = () => tryLoad('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+      () => window.XLSX ? resolve() : reject(new Error('XLSX 加载失败')),
+      () => reject(new Error('XLSX CDN 加载失败')));
+    tryLoad('xlsx.full.min.js?v=20260909v250',
+      () => window.XLSX ? resolve() : fallback(),
+      () => fallback());
+  });
+  return _xlsxPromise;
+}
+// 导出写文件：内部 await ensureXLSX，调用方无需 async
+function xlsxWriteFile(wb, fname) {
+  ensureXLSX().then(() => {
+    try { XLSX.writeFile(wb, fname); }
+    catch (e) { console.error('[xlsxWriteFile]', e); showToast('导出失败：' + (e && e.message)); }
+  }).catch(e => { console.error('[xlsxWriteFile] 加载失败', e); showToast('Excel 组件加载失败，请稍后重试'); });
+}
+// 主页渲染后空闲预加载 xlsx，使用户点上传/导出时已基本就绪
+window.addEventListener('load', () => { setTimeout(() => { ensureXLSX(); }, 1200); });
+
 // ===== Excel 解析器（支持多行表头+多Sheet） =====
 const ExcelParser = {
   readWorkbook(file) {
-    return new Promise((resolve, reject) => {
+    return ensureXLSX().then(() => new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
@@ -1917,7 +1949,7 @@ const ExcelParser = {
       };
       reader.onerror = () => reject(new Error('文件读取失败'));
       reader.readAsArrayBuffer(file);
-    });
+    }));
   },
 
   sheetToRows(sheet) {
@@ -4214,7 +4246,8 @@ const AdminUI = {
   },
 
   // 管理员：一键导出所有采购员的供应商追踪表（按采购员分 sheet）
-  exportAllSupplier() {
+  async exportAllSupplier() {
+    await ensureXLSX();
     // 跟踪表视图全量导出（管理员视角，不受采购员过滤影响）
     const all = PurchaseUI.getDeliveryBasedData.call({ isAdmin: true });
     if (!all.length) { showToast('暂无供应商追踪数据', 'error'); return; }
@@ -4238,7 +4271,7 @@ const AdminUI = {
     ws['!cols'] = headers.map(() => ({ wch: 16 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '采购跟踪表');
-    XLSX.writeFile(wb, '全部采购供应商追踪_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    xlsxWriteFile(wb, '全部采购供应商追踪_' + new Date().toISOString().slice(0, 10) + '.xlsx');
     Store.addHistory({ user: '管理员', role: 'admin', action: '导出所有采购供应商追踪表', detail: all.length + ' 条' });
     showToast('已导出 ' + all.length + ' 条（跟踪表）');
   }
@@ -4732,7 +4765,8 @@ const PurchaseUI = {
     if (cat) this.exportCategory(cat);
   },
 
-  exportCategory(cat) {
+  async exportCategory(cat) {
+    await ensureXLSX();
     const cn = normalizeText(cat);
     let data = Store.getData('supplier').filter(r => normalizeText(rowCategoryOf(r)) === cn);
     data = this.attachSalesMetrics(data);
@@ -4754,7 +4788,7 @@ const PurchaseUI = {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, String(cat).slice(0, 28) || '品类');
     const fname = '品类_' + cat + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
-    XLSX.writeFile(wb, fname);
+    xlsxWriteFile(wb, fname);
     Store.addHistory({ user: this.userName, role: 'purchase', action: '导出品类表', detail: cat + ' ' + data.length + ' 条' });
     showToast('已导出『' + cat + '』' + data.length + ' 条');
   },
@@ -5212,7 +5246,8 @@ const PurchaseUI = {
   },
 
   // ===== 导出用户上传的原始供应商追踪表（全部人：管理员导出全部，采购员仅自己；用 _raw 还原上传时的原始列） =====
-  exportSupplier() {
+  async exportSupplier() {
+    await ensureXLSX();
     const all = Store.getData('supplier') || [];
     if (!all.length) { showToast('无数据可导出', 'error'); return; }
     // 还原"原始上传的供应商追踪表"：不过滤当前表格筛选，且用 _raw 原始列/值，未合并发货明细
@@ -5242,14 +5277,15 @@ const PurchaseUI = {
     ws['!cols'] = headers.map(() => ({ wch: 16 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '供应商追踪');
-    XLSX.writeFile(wb, '供应商追踪_' + (this.isAdmin ? '全部' : this.userName) + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    xlsxWriteFile(wb, '供应商追踪_' + (this.isAdmin ? '全部' : this.userName) + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
     Store.addHistory({ user: this.userName, role: 'purchase', action: '导出原始供应商追踪', detail: data.length + ' 条' });
     showToast('已导出原始供应商追踪 ' + data.length + ' 条');
   },
 
   // ===== 采购页导出：直出用户上传的供应商追踪源文件（不做任何合并/富化/去重，行数=上传行数） =====
   // 采购页导出：导出“跟踪表视图”（与页面主表一致，含 merge 修复不再丢行）
-  exportPurchaseTracking() {
+  async exportPurchaseTracking() {
+    await ensureXLSX();
     const data = this.getMyRichData();
     if (!data.length) { showToast('无数据可导出', 'error'); return; }
     const cols = PURCHASE_TRACKING_EXPORT_COLS;
@@ -5272,7 +5308,7 @@ const PurchaseUI = {
     ws['!cols'] = headers.map(() => ({ wch: 16 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '采购跟踪表');
-    XLSX.writeFile(wb, '采购跟踪表_' + this.userName + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    xlsxWriteFile(wb, '采购跟踪表_' + this.userName + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
     Store.addHistory({ user: this.userName, role: 'purchase', action: '导出采购跟踪表', detail: data.length + ' 条' });
     showToast('已导出采购跟踪表 ' + data.length + ' 条');
   },
@@ -5627,7 +5663,8 @@ const PurchaseUI = {
     });
   },
 
-  exportReplenish() {
+  async exportReplenish() {
+    await ensureXLSX();
     const data = this.replenishFilteredData;
     if (data.length === 0) { showToast('无数据可导出', 'error'); return; }
     const rawKeys = data[0]._raw ? Object.keys(data[0]._raw) : Object.keys(data[0]).filter(k => !k.startsWith('_'));
@@ -5642,7 +5679,7 @@ const PurchaseUI = {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '需补订单');
-    XLSX.writeFile(wb, '需补订单_' + this.userName + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    xlsxWriteFile(wb, '需补订单_' + this.userName + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
     Store.addHistory({ user: this.userName, role: 'purchase', action: '导出需补订单', detail: data.length + ' 条' });
     showToast('已导出 ' + data.length + ' 条');
   },
