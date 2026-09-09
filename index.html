@@ -9,11 +9,11 @@
   <title>供应链协同管理系统</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preload" as="image" href="hero-bg.jpg" type="image/jpeg">
-  <link rel="stylesheet" href="style.css?v=20260909v254">
+  <link rel="stylesheet" href="style.css?v=20260909v255">
   <!-- 依赖本地化 + defer 延迟加载：库脚本不再阻塞首屏渲染，主页(Hero/角色卡)可秒出；Excel 解析/云端同步用到的库在后台下载 -->
-  <script defer src="supabase.min.js?v=20260909v254"></script>
+  <script defer src="supabase.min.js?v=20260909v255"></script>
   <script defer>if(typeof window.supabase==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);}</script>
-  <script defer src="lz-string.min.js?v=20260909v254"></script>
+  <script defer src="lz-string.min.js?v=20260909v255"></script>
   <script defer>if(typeof window.LZString==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js';document.head.appendChild(s);}</script>
 </head>
 <body>
@@ -311,7 +311,7 @@
         <div class="personnel-section" style="margin-top:24px;">
           <div class="personnel-col" style="grid-column:1 / -1">
             <h3>📦 品类负责人</h3>
-            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">品类负责人从首页「采购」端输入姓名登录，登录后查看自己负责品类下【所有采购员】的供应商追踪与需补订单（只读，单独成表，免密码免上传）。品类名称需与供应商追踪表中的"品类"列完全一致。</p>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">品类负责人从首页「采购」端输入姓名登录，仅查看自己名下属于负责品类的供应商追踪数据（每个品类单独成表）。品类名称需与供应商追踪表中的"品类"列完全一致。</p>
             <div id="personnel-catmgr" class="personnel-list"></div>
             <div class="personnel-add" style="display:flex;flex-direction:column;gap:6px;max-width:480px">
               <input type="text" id="add-catmgr-name" placeholder="品类负责人姓名" style="width:100%">
@@ -532,8 +532,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script defer src="config.js?v=20260909v254"></script>
-  <script defer src="sync_config.js?v=20260909v254"></script>
-  <script defer src="app.js?v=20260909v254"></script>
+  <script defer src="config.js?v=20260909v255"></script>
+  <script defer src="sync_config.js?v=20260909v255"></script>
+  <script defer src="app.js?v=20260909v255"></script>
 </body>
 </html>

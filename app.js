@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v254';
+const APP_CODE_VERSION = '20260909v255';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -4657,17 +4657,18 @@ const PurchaseUI = {
     const diag = this._filterDiag || {};
     if (this._showAllSupplier) { el.innerHTML = '<span style="color:#f59e0b">（当前：显示全部历史）</span>'; return; }
     const isCat = diag.isCategoryManager;
-    const scopeLabel = isCat ? '负责品类' : '你名下';
+    const scopeLabel = '你名下';
     if (isCat) {
-      // 品类负责人：从当前批次过滤结果取数；提示文案按品类维度
+      // 品类负责人：跟踪表只看自己名下的 SKU；提示文案仍保留负责品类维度
       if (!diag.active && (!diag.mode || diag.mode === 'none')) {
-        el.innerHTML = '<span style="color:#ef4444">（⚠️ 未识别到本次批次，当前显示' + scopeLabel + '全部 ' + (diag.myTotal || '?') + ' 条）</span>';
+        const cats = (diag.categories || []).join(' / ') || '';
+        el.innerHTML = '<span style="color:#ef4444">（⚠️ 未识别到本次批次 · ' + cats + ' · ' + scopeLabel + '全部 ' + (diag.myTotal || '?') + ' 条）</span>';
         return;
       }
       const myTotal = diag.myTotal || '';
       const finalCount = diag.finalCount || '';
       const cats = (diag.categories || []).join(' / ') || '';
-      el.innerHTML = `<span style="color:#22c55e">（本次批次 · ${cats} · 共 ${myTotal} 条，当前显示 ${finalCount} 条）</span>`;
+      el.innerHTML = `<span style="color:#22c55e">（本次批次 · ${cats} · ${scopeLabel}共 ${myTotal} 条，当前显示 ${finalCount} 条）</span>`;
       return;
     }
     const meta = Store.getData('supplier_meta') || {};
@@ -4767,13 +4768,17 @@ const PurchaseUI = {
     let data = this._catData[safeId];
     if (!data || data._v !== ver) {
       const supplierAll = Store.getData('supplier');
+      // 品类分表：只显示当前登录采购员/品类负责人自己名下的 SKU
       let all = supplierAll.filter(r => normalizeText(rowCategoryOf(r)) === cn);
+      if (this.userName) {
+        all = all.filter(r => buyerExact(r.buyer, this.userName));
+      }
       // 诊断：把当前 supplier 数据按品类汇总，方便排查“某品类数量不对”
       try {
         const dist = {};
         supplierAll.forEach(r => { const c = rowCategoryOf(r) || '(空白)'; dist[c] = (dist[c] || 0) + 1; });
         console.log('[renderCategorySupplier] 品类分布:', dist);
-        console.log('[renderCategorySupplier]', cat, '匹配', all.length, '/', supplierAll.length);
+        console.log(`[renderCategorySupplier] ${cat} 匹配(仅自己) ${all.length}/${supplierAll.length}`);
       } catch (e) {}
       all = this.attachSalesMetrics(all);
       all._v = ver;
@@ -4845,6 +4850,10 @@ const PurchaseUI = {
     await ensureXLSX();
     const cn = normalizeText(cat);
     let data = Store.getData('supplier').filter(r => normalizeText(rowCategoryOf(r)) === cn);
+    // 品类分表只导出当前登录用户自己名下的 SKU
+    if (this.userName) {
+      data = data.filter(r => buyerExact(r.buyer, this.userName));
+    }
     data = this.attachSalesMetrics(data);
     if (data.length === 0) { showToast('该品类暂无数据可导出', 'error'); return; }
     const cols = [
@@ -5088,17 +5097,18 @@ const PurchaseUI = {
     // 权限过滤：默认只看「本次跟踪表里属于我的 SKU」；旧交期数据保留在云端，
     // 但采购前端默认隐藏。优先按 supplier_meta[buyer].activeKeys（本次上传的 SKU key 集合）过滤；
     // 没有 activeKeys 时退化为按 _batchId 取最新批次。开启「显示全部历史」时不过滤。
+    // 品类负责人同样只看他自己的跟踪表数据；其「品类分表」在 renderCategorySupplier 中再按品类细分。
     if (!this.isAdmin) {
       const before = rows.length;
       const showAll = this._showAllSupplier;
-      let myRows, activeKeys, filterMode;
-
-      if (this.isCategoryManager && this.categories.length) {
-        // 品类负责人：可看负责品类（可多个）下所有采购员的供应商追踪数据。
-        // 过滤范围先按品类取，再按「本次上传批次」精确到最新批次。
-        const catSet = new Set(this.categories.map(c => normalizeText(c)));
-        myRows = rows.filter(r => catSet.has(normalizeText(rowCategoryOf(r))));
-        // 品类负责人没有独立的 activeKeys（上传是按采购员维度），故从负责品类行里取最新 _batchId
+      // 统一按 buyer 精确匹配：普通采购员 / 品类负责人都只看到自己的 SKU
+      let myRows = rows.filter(r => buyerExact(r.buyer, this.userName));
+      let activeKeys, filterMode;
+      const meta = Store.getData('supplier_meta') || {};
+      const myMeta = meta[normalizeText(this.userName)] || {};
+      activeKeys = (myMeta.activeKeys && myMeta.activeKeys.length) ? myMeta.activeKeys : [];
+      filterMode = 'activeKeys';
+      if (!activeKeys.length) {
         const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
         const lastBatch = batchIds[0] || '';
         if (lastBatch) {
@@ -5107,24 +5117,6 @@ const PurchaseUI = {
         } else {
           activeKeys = [];
           filterMode = 'none';
-        }
-      } else {
-        // 普通采购员：按 buyer 精确匹配，优先用 supplier_meta[buyer].activeKeys
-        myRows = rows.filter(r => buyerExact(r.buyer, this.userName));
-        const meta = Store.getData('supplier_meta') || {};
-        const myMeta = meta[normalizeText(this.userName)] || {};
-        activeKeys = (myMeta.activeKeys && myMeta.activeKeys.length) ? myMeta.activeKeys : [];
-        filterMode = 'activeKeys';
-        if (!activeKeys.length) {
-          const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
-          const lastBatch = batchIds[0] || '';
-          if (lastBatch) {
-            activeKeys = myRows.filter(r => r._batchId === lastBatch).map(r => OVERWRITE_KEYFN.supplier(r));
-            filterMode = 'lastBatch';
-          } else {
-            activeKeys = [];
-            filterMode = 'none';
-          }
         }
       }
       // 诊断信息（供 _updateBatchInfo 在页面上显示）
