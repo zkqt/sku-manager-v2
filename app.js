@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v250';
+const APP_CODE_VERSION = '20260909v251';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -3783,9 +3783,28 @@ const AdminUI = {
           const batchId = 'b_' + Date.now() + '_' + String(result.fileName || 'file').replace(/[^\w.\-]/g, '');
           const uploadBy = currentUserName || '';
           result.data = result.data.map(r => Object.assign({}, r, { _batchId: batchId, _uploadBy: uploadBy }));
-          // 记录当前批次信息到云端 supplier_meta（换电脑/多端同步可见），以 batchId 为键
+          // 记录每个采购员「本次上传的 SKU key 集合」到 supplier_meta，按采购员姓名归集。
+          // 采购看板优先用这个集合过滤，比单纯按 _batchId 更精确：可避免旧表孤儿行因 key 差异
+          // 未被覆盖却仍带旧 buyer 而误显示的问题。
           try {
             const meta = Store.getData('supplier_meta') || {};
+            const activeKeys = {};
+            result.data.forEach(r => {
+              const buyer = normalizeText(String(r.buyer || ''));
+              if (!buyer) return;
+              if (!activeKeys[buyer]) activeKeys[buyer] = new Set();
+              activeKeys[buyer].add(OVERWRITE_KEYFN.supplier(r));
+            });
+            Object.entries(activeKeys).forEach(([buyer, set]) => {
+              if (!meta[buyer]) meta[buyer] = {};
+              meta[buyer].batchId = batchId;
+              meta[buyer].uploadedAt = new Date().toISOString();
+              meta[buyer].fileName = result.fileName || '';
+              meta[buyer].count = set.size;
+              meta[buyer].uploadBy = uploadBy;
+              meta[buyer].activeKeys = [...set];
+            });
+            // 同时保留以 batchId 为键的全局批次信息，便于诊断
             meta[batchId] = { uploadedAt: new Date().toISOString(), fileName: result.fileName || '', count: result.data.length, uploadBy };
             syncPromises.push(Store.setData('supplier_meta', meta));
           } catch (e) { debugLog('[handleUpload] supplier_meta 记录失败: ' + (e && e.message)); }
@@ -4579,34 +4598,21 @@ const PurchaseUI = {
     else this.renderCategorySupplierBySafeId(this.activeTab);
   },
 
-  // 在开关旁显示当前上传批次信息，从 supplier 数据本身计算最新批次，让用户确认范围
+  // 在开关旁显示当前上传批次信息，优先从 supplier_meta[buyer].activeKeys 读取，
+  // 让用户确认当前显示的是否为本次上传文件里的 SKU。
   _updateBatchInfo() {
     const el = $('#purchase-batch-info');
     if (!el) return;
     if (this.isAdmin || this.isCategoryManager) { el.textContent = ''; return; }
-    const all = Store.getData('supplier') || [];
-    const myRows = all.filter(r => buyerExact(r.buyer, this.userName));
-    const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
-    const lastBatch = batchIds[0];
-    if (!lastBatch) { el.textContent = '（未记录上传批次，显示全部）'; return; }
-    // 优先从 supplier_meta 读取该批次元数据；不存在则从 batchId 本身解析时间戳/文件名
     const meta = Store.getData('supplier_meta') || {};
-    const m = meta[lastBatch] || {};
-    let d = m.uploadedAt ? new Date(m.uploadedAt) : null;
-    let fn = m.fileName ? `「${m.fileName}」` : '';
-    if (!d || isNaN(d.getTime())) {
-      const parts = String(lastBatch).split('_');
-      const ts = parts[1] ? parseInt(parts[1], 10) : NaN;
-      if (!isNaN(ts)) d = new Date(ts);
-    }
-    if (!fn) {
-      const parts = String(lastBatch).split('_');
-      const rawFn = parts.slice(2).join('_');
-      if (rawFn) fn = `「${rawFn}」`;
-    }
+    const myMeta = meta[normalizeText(this.userName)] || {};
+    const activeCount = (myMeta.activeKeys || []).length;
+    if (this._showAllSupplier) { el.textContent = '（当前：显示全部历史）'; return; }
+    if (!activeCount) { el.textContent = '（未记录本次上传 SKU，显示全部）'; return; }
+    let d = myMeta.uploadedAt ? new Date(myMeta.uploadedAt) : null;
     const ts = d && !isNaN(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
-    const cnt = myRows.filter(r => r._batchId === lastBatch).length;
-    el.textContent = this._showAllSupplier ? '（当前：显示全部历史）' : `（当前批次：${fn}${ts} · ${cnt} 条）`;
+    const fn = myMeta.fileName ? `「${myMeta.fileName}」` : '';
+    el.textContent = `（本次上传：${fn}${ts} · ${activeCount} 条）`;
   },
 
   // ===== 品类负责人视图：在采购面板内为每个负责品类增加 Tab =====
@@ -5009,8 +5015,9 @@ const PurchaseUI = {
       return 0;
     });
 
-    // 权限过滤：默认只看「本次跟踪表里属于我的最新批次」；旧交期数据保留在云端，
-    // 但采购前端默认隐藏。批次号按数据本身计算，支持管理员/他人代上传后采购员仍能正确看到自己最新批次。
+    // 权限过滤：默认只看「本次跟踪表里属于我的 SKU」；旧交期数据保留在云端，
+    // 但采购前端默认隐藏。优先按 supplier_meta[buyer].activeKeys（本次上传的 SKU key 集合）过滤；
+    // 没有 activeKeys 时退化为按 _batchId 取最新批次。开启「显示全部历史」时不过滤。
     if (!this.isAdmin) {
       const before = rows.length;
       if (this.isCategoryManager) {
@@ -5020,15 +5027,24 @@ const PurchaseUI = {
       } else {
         const showAll = this._showAllSupplier;
         const myRows = rows.filter(r => buyerExact(r.buyer, this.userName));
-        // 从该采购员所有历史行里取最新批次号（_batchId 为上传时的时间戳字符串）
-        const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
-        const lastBatch = batchIds[0] || '';
-        rows = myRows.filter(r => {
-          if (showAll) return true;
-          if (!lastBatch) return true; // 旧数据无批次标记时降级显示全部
-          return r._batchId === lastBatch;
-        });
-        console.log(`[Purchase] ${this.userName} 批次过滤(showAll=${!!showAll}, lastBatch=${lastBatch || '无'}): ${before} -> ${rows.length}`);
+        const meta = Store.getData('supplier_meta') || {};
+        const myMeta = meta[normalizeText(this.userName)] || {};
+        let activeKeys = myMeta.activeKeys || [];
+        let filterMode = 'activeKeys';
+        // activeKeys 为空时退化为 _batchId 最新批次过滤
+        if (!activeKeys.length) {
+          const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
+          const lastBatch = batchIds[0] || '';
+          activeKeys = lastBatch ? myRows.filter(r => r._batchId === lastBatch).map(r => OVERWRITE_KEYFN.supplier(r)) : [];
+          filterMode = lastBatch ? 'lastBatch' : 'none';
+        }
+        if (!showAll && activeKeys.length) {
+          const set = new Set(activeKeys);
+          rows = myRows.filter(r => set.has(OVERWRITE_KEYFN.supplier(r)));
+        } else {
+          rows = myRows;
+        }
+        console.log(`[Purchase] ${this.userName} 过滤(showAll=${!!showAll}, mode=${filterMode}, active=${activeKeys.length}): ${before} -> ${rows.length}`);
       }
     }
     // 把销量大表(sales)的 9月交付字段匹配到供应商行（纯数值，无绿+/红- 差异），供采购主表展示

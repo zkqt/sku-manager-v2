@@ -137,7 +137,7 @@ body { font-family: -apple-system, "Microsoft YaHei", "Segoe UI", sans-serif; ba
 .home-section-header { text-align: center; }
 .home-section-header h3 { font-size: 30px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
 .home-section-header p { font-size: 14px; color: #64748b; }
-.role-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; max-width: 1040px; width: 100%; }
+.role-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 840px; width: 100%; }
 .role-leaderboard-fixed { width: 100%; max-width: 1120px; display: flex; justify-content: center; padding: 0 16px; }
 .home-yesterday-title { font-size: 22px; font-weight: 700; color: #1e293b; text-align: center; margin-top: 48px; }
 .home-yesterday-leaderboard { width: 100%; max-width: 1120px; display: flex; justify-content: center; padding: 0 16px; margin-top: 20px; }
