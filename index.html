@@ -7,13 +7,15 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>供应链协同管理系统</title>
-  <link rel="stylesheet" href="style.css?v=20260909v247">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preload" as="image" href="hero-bg.jpg" type="image/jpeg">
+  <link rel="stylesheet" href="style.css?v=20260909v248">
   <!-- 依赖本地化：避免中国大陆/国内部署环境下 jsdelivr 被墙或超时导致整页卡死、Excel 解析与云端同步失败；本地缺失时再回退 CDN -->
-  <script src="xlsx.full.min.js?v=20260909v247"></script>
+  <script src="xlsx.full.min.js?v=20260909v248"></script>
   <script>if(typeof window.XLSX==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
-  <script src="supabase.min.js?v=20260909v247"></script>
+  <script src="supabase.min.js?v=20260909v248"></script>
   <script>if(typeof window.supabase==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="lz-string.min.js?v=20260909v247"></script>
+  <script src="lz-string.min.js?v=20260909v248"></script>
   <script>if(typeof window.LZString==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"><\/script>');}</script>
 </head>
 <body>
@@ -29,7 +31,9 @@
             <span>SKU Manager <small>2.0</small></span>
           </div>
           <div class="home-nav-actions">
-            <!-- 帮助与管理员入口已分别下沉到 Hero 内容区与管理员角色卡 -->
+            <button class="home-nav-btn" onclick="Screen.show('screen-admin-login')" title="管理员入口">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </button>
           </div>
         </nav>
         <aside id="home-hero-leaderboard" class="home-hero-leaderboard" aria-label="今日排行榜"></aside>
@@ -75,6 +79,8 @@
             <span class="role-name">管理员</span>
           </div>
         </div>
+        <div class="home-yesterday-title">昨日排行榜</div>
+        <div id="home-yesterday-leaderboard" class="home-yesterday-leaderboard" aria-label="昨日排行榜"></div>
       </section>
     </div>
 
@@ -531,8 +537,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script src="config.js?v=20260909v247"></script>
-  <script src="sync_config.js?v=20260909v247"></script>
-  <script src="app.js?v=20260909v247"></script>
+  <script src="config.js?v=20260909v248"></script>
+  <script src="sync_config.js?v=20260909v248"></script>
+  <script src="app.js?v=20260909v248"></script>
 </body>
 </html>

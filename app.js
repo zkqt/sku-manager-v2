@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v247';
+const APP_CODE_VERSION = '20260909v248';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -226,6 +226,15 @@ function excelDateToText(val, monthHint) {
 }
 
 // ===== 屏幕切换 =====
+function clearSessionState() {
+  try {
+    sessionStorage.removeItem('skuv2_last_screen');
+    sessionStorage.removeItem('skuv2_last_role');
+    sessionStorage.removeItem('skuv2_last_user');
+    sessionStorage.removeItem('skuv2_admin_auth');
+  } catch (e) {}
+}
+
 const Screen = {
   current: '',
   show(id) {
@@ -243,10 +252,21 @@ const Screen = {
     if (id === 'screen-role') { renderLeaderboard('all'); startRoleAnimation(); }
     // 切回角色/登录页时恢复登录按钮，避免“正在进入...”卡住
     if (id === 'screen-role' || id === 'screen-name-login') resetLoginButtonState();
+    // 记录/清理刷新后恢复状态
+    try {
+      if (id === 'screen-role') {
+        clearSessionState();
+      } else {
+        sessionStorage.setItem('skuv2_last_screen', id);
+        if (currentRole) sessionStorage.setItem('skuv2_last_role', currentRole);
+        if (currentUserName) sessionStorage.setItem('skuv2_last_user', currentUserName);
+        if (id === 'screen-admin') sessionStorage.setItem('skuv2_admin_auth', '1');
+      }
+    } catch (e) {}
   }
 };
 
-// ===== 排行榜（首页 Hero 右上角显示今日榜） =====
+// ===== 排行榜：Hero 右上角今日榜 + 角色区下方昨日榜 =====
 function renderLeaderboard(mode) {
   mode = mode || 'all';
   // 刷新数据更新时间（Hero 容器）
@@ -285,15 +305,21 @@ function renderLeaderboard(mode) {
     </div>`;
   };
 
-  // Hero 区只展示今日榜（昨日榜不再单独展示）
-  const html = '<div class="leaderboards-row">' +
+  // Hero 区：今日榜
+  const todayHtml = '<div class="leaderboards-row">' +
     renderBoard(today.buyers, '今日人气王', '🔥', 'theme-red') +
     renderBoard(today.users, '今日催更王', '⚡', 'theme-yellow') +
     '</div>';
-
-  // 渲染到 Hero 区排行榜容器
   const heroEl = $('#home-hero-leaderboard');
-  if (heroEl) heroEl.innerHTML = html;
+  if (heroEl) heroEl.innerHTML = todayHtml;
+
+  // 角色选择区下方：昨日榜
+  const yesterdayHtml = '<div class="leaderboards-row">' +
+    renderBoard(yesterday.buyers, '昨日人气王', '🔥', 'theme-red') +
+    renderBoard(yesterday.users, '昨日催更王', '⚡', 'theme-yellow') +
+    '</div>';
+  const yesterdayEl = $('#home-yesterday-leaderboard');
+  if (yesterdayEl) yesterdayEl.innerHTML = yesterdayHtml;
 }
 
 // ===== 弹窗 =====
@@ -491,8 +517,8 @@ function initMarquee(el) {
       Array.from(track.children).forEach(c => track.appendChild(c.cloneNode(true)));
       safety++;
     }
-    // 速度约 45px/s，内容越长越慢，避免太快
-    const duration = Math.max(track.scrollWidth / 45, 16);
+    // 速度约 70px/s，最短 10s，避免太慢
+    const duration = Math.max(track.scrollWidth / 70, 10);
     track.style.animationDuration = duration + 's';
   });
 }
@@ -3725,10 +3751,10 @@ const AdminUI = {
           const batchId = 'b_' + Date.now() + '_' + String(result.fileName || 'file').replace(/[^\w.\-]/g, '');
           const uploadBy = currentUserName || '';
           result.data = result.data.map(r => Object.assign({}, r, { _batchId: batchId, _uploadBy: uploadBy }));
-          // 记录当前上传人最近一次批次到云端 supplier_meta（换电脑/多端同步可见）
+          // 记录当前批次信息到云端 supplier_meta（换电脑/多端同步可见），以 batchId 为键
           try {
             const meta = Store.getData('supplier_meta') || {};
-            meta[uploadBy] = { batchId, uploadedAt: new Date().toISOString(), fileName: result.fileName || '', count: result.data.length };
+            meta[batchId] = { uploadedAt: new Date().toISOString(), fileName: result.fileName || '', count: result.data.length, uploadBy };
             syncPromises.push(Store.setData('supplier_meta', meta));
           } catch (e) { debugLog('[handleUpload] supplier_meta 记录失败: ' + (e && e.message)); }
 
@@ -4520,17 +4546,34 @@ const PurchaseUI = {
     else this.renderCategorySupplierBySafeId(this.activeTab);
   },
 
-  // 在开关旁显示当前上传批次信息（文件名 + 上传时间），让用户确认范围
+  // 在开关旁显示当前上传批次信息，从 supplier 数据本身计算最新批次，让用户确认范围
   _updateBatchInfo() {
     const el = $('#purchase-batch-info');
     if (!el) return;
+    if (this.isAdmin || this.isCategoryManager) { el.textContent = ''; return; }
+    const all = Store.getData('supplier') || [];
+    const myRows = all.filter(r => buyerExact(r.buyer, this.userName));
+    const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
+    const lastBatch = batchIds[0];
+    if (!lastBatch) { el.textContent = '（未记录上传批次，显示全部）'; return; }
+    // 优先从 supplier_meta 读取该批次元数据；不存在则从 batchId 本身解析时间戳/文件名
     const meta = Store.getData('supplier_meta') || {};
-    const m = this.userName ? meta[this.userName] : null;
-    if (!m) { el.textContent = '（未记录上传批次，显示全部）'; return; }
-    const d = m.uploadedAt ? new Date(m.uploadedAt) : null;
+    const m = meta[lastBatch] || {};
+    let d = m.uploadedAt ? new Date(m.uploadedAt) : null;
+    let fn = m.fileName ? `「${m.fileName}」` : '';
+    if (!d || isNaN(d.getTime())) {
+      const parts = String(lastBatch).split('_');
+      const ts = parts[1] ? parseInt(parts[1], 10) : NaN;
+      if (!isNaN(ts)) d = new Date(ts);
+    }
+    if (!fn) {
+      const parts = String(lastBatch).split('_');
+      const rawFn = parts.slice(2).join('_');
+      if (rawFn) fn = `「${rawFn}」`;
+    }
     const ts = d && !isNaN(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
-    const fn = m.fileName ? `「${m.fileName}」` : '';
-    el.textContent = this._showAllSupplier ? '（当前：显示全部历史）' : `（当前批次：${fn}${ts} · ${m.count || ''} 条）`;
+    const cnt = myRows.filter(r => r._batchId === lastBatch).length;
+    el.textContent = this._showAllSupplier ? '（当前：显示全部历史）' : `（当前批次：${fn}${ts} · ${cnt} 条）`;
   },
 
   // ===== 品类负责人视图：在采购面板内为每个负责品类增加 Tab =====
@@ -4932,20 +4975,23 @@ const PurchaseUI = {
       return 0;
     });
 
-    // 权限过滤：默认只看「我本次上传」的批次；找不到批次记录时降级为 buyer 精确匹配，兼容旧数据。
+    // 权限过滤：默认只看「本次跟踪表里属于我的最新批次」；旧交期数据保留在云端，
+    // 但采购前端默认隐藏。批次号按数据本身计算，支持管理员/他人代上传后采购员仍能正确看到自己最新批次。
     if (!this.isAdmin) {
       const before = rows.length;
       if (this.isCategoryManager) {
-        // 品类负责人看负责品类的全量数据，不按「上传批次」过滤（它本就不是只看自己上传）
+        // 品类负责人看负责品类的全量数据，不按「上传批次」过滤
         rows = rows.filter(r => buyerExact(r.buyer, this.userName));
         console.log(`[Purchase] ${this.userName} 品类负责视角过滤: ${before} -> ${rows.length}`);
       } else {
-        const meta = Store.getData('supplier_meta') || {};
-        const lastBatch = this.userName ? (meta[this.userName] && meta[this.userName].batchId) : '';
         const showAll = this._showAllSupplier;
-        rows = rows.filter(r => {
-          if (!buyerExact(r.buyer, this.userName)) return false;
-          if (showAll || !lastBatch) return true; // 无批次记录时降级显示全部 buyer=我的，避免 0 条
+        const myRows = rows.filter(r => buyerExact(r.buyer, this.userName));
+        // 从该采购员所有历史行里取最新批次号（_batchId 为上传时的时间戳字符串）
+        const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
+        const lastBatch = batchIds[0] || '';
+        rows = myRows.filter(r => {
+          if (showAll) return true;
+          if (!lastBatch) return true; // 旧数据无批次标记时降级显示全部
           return r._batchId === lastBatch;
         });
         console.log(`[Purchase] ${this.userName} 批次过滤(showAll=${!!showAll}, lastBatch=${lastBatch || '无'}): ${before} -> ${rows.length}`);
@@ -7027,6 +7073,50 @@ function refreshCurrentScreen() {
   else if (currentRole === 'operation' && typeof OperationUI !== 'undefined') OperationUI.refresh();
 }
 
+// 刷新页面后恢复之前的屏幕与登录状态（不强制跳回主页）
+function restoreSession() {
+  try {
+    const lastScreen = sessionStorage.getItem('skuv2_last_screen');
+    const lastRole = sessionStorage.getItem('skuv2_last_role');
+    const lastUser = sessionStorage.getItem('skuv2_last_user');
+
+    if (lastScreen === 'screen-admin' && sessionStorage.getItem('skuv2_admin_auth') === '1') {
+      currentRole = 'admin';
+      currentUserName = '';
+      AdminUI.updateDataStatus();
+      AdminUI.renderPersonnel();
+      AdminUI.renderHistory();
+      AdminUI.renderUploadSummary();
+      const conf = localStorage.getItem('skuv2_supabase');
+      if (conf) { try { const c = JSON.parse(conf); $('#supabase-url').value = c.url || ''; $('#supabase-key').value = c.key || ''; } catch (e) {} }
+      AdminUI.renderSyncTypeList();
+      Screen.show('screen-admin');
+      if (Sync.enabled) Sync.pullAllWithGlobalProgress();
+      return;
+    }
+
+    if (lastScreen === 'screen-admin-login') {
+      Screen.show('screen-admin-login');
+      return;
+    }
+
+    if (lastScreen === 'screen-name-login' && lastRole) {
+      currentRole = lastRole;
+      currentUserName = '';
+      handleRoleLogin(lastRole);
+      return;
+    }
+
+    if (['screen-purchase', 'screen-plan', 'screen-operation'].includes(lastScreen) && lastRole && lastUser) {
+      currentRole = lastRole;
+      currentUserName = lastUser;
+      enterWorkbench(lastRole, lastUser);
+      return;
+    }
+  } catch (e) { console.error('[restoreSession]', e); }
+  Screen.show('screen-role');
+}
+
 // ===== Tab 切换 =====
 function setupTabs() {
   $$('#screen-admin .tab').forEach(tab => {
@@ -7139,11 +7229,11 @@ document.addEventListener('DOMContentLoaded', () => {
   AdminUI.renderPersonnel();
   AdminUI.renderHistory();
   AdminUI.renderUploadSummary();
-  renderLeaderboard('all');
-  startRoleAnimation();
   // 每30秒更新一次排行榜（如果停留在角色选择页）
   setInterval(() => {
     const roleScreen = $('#screen-role');
     if (roleScreen && roleScreen.classList.contains('active')) renderLeaderboard('all');
   }, 30000);
+  // 刷新后恢复之前的屏幕，不再强制跳回主页
+  restoreSession();
 });
