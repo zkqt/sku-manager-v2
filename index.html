@@ -9,11 +9,11 @@
   <title>供应链协同管理系统</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preload" as="image" href="hero-bg.jpg" type="image/jpeg">
-  <link rel="stylesheet" href="style.css?v=20260909v251">
+  <link rel="stylesheet" href="style.css?v=20260909v252">
   <!-- 依赖本地化 + defer 延迟加载：库脚本不再阻塞首屏渲染，主页(Hero/角色卡)可秒出；Excel 解析/云端同步用到的库在后台下载 -->
-  <script defer src="supabase.min.js?v=20260909v251"></script>
+  <script defer src="supabase.min.js?v=20260909v252"></script>
   <script defer>if(typeof window.supabase==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);}</script>
-  <script defer src="lz-string.min.js?v=20260909v251"></script>
+  <script defer src="lz-string.min.js?v=20260909v252"></script>
   <script defer>if(typeof window.LZString==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js';document.head.appendChild(s);}</script>
 </head>
 <body>
@@ -166,6 +166,7 @@
             </label>
             <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">未勾选时：仅更新本次文件中的 SKU，保留原采购交期；未包含的 SKU 保持原样。</p>
             <button class="btn-sm" style="margin-top:8px;background:#dc3545;color:#fff;border-color:#dc3545" onclick="AdminUI.clearSupplier()" title="清空全部供应商追踪数据（不可恢复）">🗑️ 清空供应商追踪</button>
+            <button class="btn-sm" style="margin-top:8px;background:#17a2b8;color:#fff;border-color:#17a2b8" onclick="AdminUI.rebuildSupplierBatches()" title="根据当前云端数据，为每个采购员重算「本次上传 SKU 集合」（修复采购看板旧 SKU 未隐藏）">🔄 重建批次索引</button>
             <span class="upload-status" id="status-supplier"></span>
           </div>
           <div class="upload-zone" data-filetype="cancel">
@@ -531,8 +532,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script defer src="config.js?v=20260909v251"></script>
-  <script defer src="sync_config.js?v=20260909v251"></script>
-  <script defer src="app.js?v=20260909v251"></script>
+  <script defer src="config.js?v=20260909v252"></script>
+  <script defer src="sync_config.js?v=20260909v252"></script>
+  <script defer src="app.js?v=20260909v252"></script>
 </body>
 </html>

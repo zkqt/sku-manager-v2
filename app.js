@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v251';
+const APP_CODE_VERSION = '20260909v252';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -3946,6 +3946,56 @@ const AdminUI = {
     });
   },
 
+  // 重建批次索引：根据当前云端 supplier 数据，为每个采购员重算「本次上传 SKU 集合」(activeKeys)。
+  // 解决“重新上传后采购看板仍显示旧 SKU”的问题——当 supplier_meta 里 activeKeys 缺失/损坏时一键修复，
+  // 无需再次上传文件。逻辑：对每个 buyer，取 _batchId 最新批次的行集合；若全部无 _batchId，则退化为该 buyer 全量。
+  async rebuildSupplierBatches() {
+    const all = Store.getData('supplier') || [];
+    if (all.length === 0) { showToast('当前没有供应商追踪数据', 'error'); return; }
+    const meta = Store.getData('supplier_meta') || {};
+    const byBuyer = {};
+    all.forEach(r => {
+      const b = normalizeText(String(r.buyer || ''));
+      if (!b) return;
+      if (!byBuyer[b]) byBuyer[b] = [];
+      byBuyer[b].push(r);
+    });
+    const lines = [];
+    let totalRebuilt = 0;
+    Object.keys(byBuyer).forEach(b => {
+      const rows = byBuyer[b];
+      // 优先按 _batchId 最新批次
+      const batchIds = [...new Set(rows.map(r => r._batchId).filter(Boolean))].sort().reverse();
+      const lastBatch = batchIds[0] || '';
+      let activeKeys;
+      if (lastBatch) {
+        activeKeys = rows.filter(r => r._batchId === lastBatch).map(r => OVERWRITE_KEYFN.supplier(r));
+      } else {
+        // 没有任何 _batchId，无法判断“本次上传”，退化为全量（保留历史）
+        activeKeys = rows.map(r => OVERWRITE_KEYFN.supplier(r));
+      }
+      if (!meta[b]) meta[b] = {};
+      meta[b].activeKeys = [...new Set(activeKeys)];
+      meta[b].rebuiltAt = new Date().toISOString();
+      totalRebuilt++;
+      lines.push(`• ${b}：${meta[b].activeKeys.length} 个 SKU${lastBatch ? '（按最新批次）' : '（⚠️无批次，按全量）'}`);
+    });
+    try {
+      await Store.setData('supplier_meta', meta);
+      Store.addHistory({ user: '管理员', role: 'admin', action: '重建批次索引', detail: '覆盖 ' + totalRebuilt + ' 个采购员' });
+      this.updateDataStatus();
+      try { if (typeof refreshCurrentScreen === 'function') refreshCurrentScreen(); } catch (e) {}
+      const msg = `已重建 ${totalRebuilt} 个采购员的批次索引：\n` + lines.join('\n');
+      debugLog('[rebuildSupplierBatches] ' + msg);
+      showToast('批次索引已重建（' + totalRebuilt + ' 人），请让采购员刷新采购看板', 'success');
+      alert(msg);
+    } catch (err) {
+      const detail = (err && (err.message || JSON.stringify(err))) || '未知错误';
+      debugLog('[rebuildSupplierBatches] 失败: ' + detail);
+      showToast('重建失败：' + detail, 'error');
+    }
+  },
+
 
   renderUploadSummary() {
     const types = [
@@ -4604,15 +4654,21 @@ const PurchaseUI = {
     const el = $('#purchase-batch-info');
     if (!el) return;
     if (this.isAdmin || this.isCategoryManager) { el.textContent = ''; return; }
+    const diag = this._filterDiag || {};
+    if (this._showAllSupplier) { el.innerHTML = '<span style="color:#f59e0b">（当前：显示全部历史）</span>'; return; }
     const meta = Store.getData('supplier_meta') || {};
     const myMeta = meta[normalizeText(this.userName)] || {};
     const activeCount = (myMeta.activeKeys || []).length;
-    if (this._showAllSupplier) { el.textContent = '（当前：显示全部历史）'; return; }
-    if (!activeCount) { el.textContent = '（未记录本次上传 SKU，显示全部）'; return; }
+    if (!activeCount && (!diag.mode || diag.mode === 'none')) {
+      el.innerHTML = '<span style="color:#ef4444">（⚠️ 未记录本次上传 SKU，当前显示你名下全部 ' + (diag.myTotal || '?') + ' 条）</span>';
+      return;
+    }
     let d = myMeta.uploadedAt ? new Date(myMeta.uploadedAt) : null;
     const ts = d && !isNaN(d.getTime()) ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
     const fn = myMeta.fileName ? `「${myMeta.fileName}」` : '';
-    el.textContent = `（本次上传：${fn}${ts} · ${activeCount} 条）`;
+    const myTotal = diag.myTotal || '';
+    const finalCount = diag.finalCount || activeCount || '';
+    el.innerHTML = `<span style="color:#22c55e">（本次上传：${fn}${ts} · ${activeCount} 条；你名下共 ${myTotal} 条，当前显示 ${finalCount} 条）</span>`;
   },
 
   // ===== 品类负责人视图：在采购面板内为每个负责品类增加 Tab =====
@@ -5029,21 +5085,37 @@ const PurchaseUI = {
         const myRows = rows.filter(r => buyerExact(r.buyer, this.userName));
         const meta = Store.getData('supplier_meta') || {};
         const myMeta = meta[normalizeText(this.userName)] || {};
-        let activeKeys = myMeta.activeKeys || [];
+        let activeKeys = (myMeta.activeKeys && myMeta.activeKeys.length) ? myMeta.activeKeys : [];
         let filterMode = 'activeKeys';
-        // activeKeys 为空时退化为 _batchId 最新批次过滤
+        // activeKeys 为空时退化为 _batchId 最新批次过滤；再不行则自动从当前数据重建
         if (!activeKeys.length) {
           const batchIds = [...new Set(myRows.map(r => r._batchId).filter(Boolean))].sort().reverse();
           const lastBatch = batchIds[0] || '';
-          activeKeys = lastBatch ? myRows.filter(r => r._batchId === lastBatch).map(r => OVERWRITE_KEYFN.supplier(r)) : [];
-          filterMode = lastBatch ? 'lastBatch' : 'none';
+          if (lastBatch) {
+            activeKeys = myRows.filter(r => r._batchId === lastBatch).map(r => OVERWRITE_KEYFN.supplier(r));
+            filterMode = 'lastBatch';
+          } else {
+            // 没有任何 _batchId：无法判断“本次上传”，退化为该采购员全部并显示提示
+            activeKeys = [];
+            filterMode = 'none';
+          }
         }
+        // 诊断信息（供 _updateBatchInfo 在页面上显示）
+        this._filterDiag = {
+          buyer: this.userName,
+          myTotal: myRows.length,
+          active: activeKeys.length,
+          mode: filterMode,
+          showAll: !!showAll,
+          finalCount: 0
+        };
         if (!showAll && activeKeys.length) {
           const set = new Set(activeKeys);
           rows = myRows.filter(r => set.has(OVERWRITE_KEYFN.supplier(r)));
         } else {
           rows = myRows;
         }
+        if (this._filterDiag) this._filterDiag.finalCount = rows.length;
         console.log(`[Purchase] ${this.userName} 过滤(showAll=${!!showAll}, mode=${filterMode}, active=${activeKeys.length}): ${before} -> ${rows.length}`);
       }
     }
