@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v241';
+const APP_CODE_VERSION = '20260909v242';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -484,15 +484,40 @@ function buildMarqueeHtml(text, icon) {
     <span class="marquee-icon">${icon}</span>
     <div class="marquee-viewport"><div class="marquee-track">
       <span class="marquee-item">${safe}</span>
-      <span class="marquee-item">${safe}</span>
     </div></div>
     <span class="marquee-hint">点击暂停</span>
   </div>`;
 }
 
+// 初始化跑马灯：按实际视口/内容宽度计算副本数，让内容从右侧无缝进入，避免"从中间开始"
+function initMarquee(el) {
+  if (!el) return;
+  requestAnimationFrame(() => {
+    const viewport = el.querySelector('.marquee-viewport');
+    const track = el.querySelector('.marquee-track');
+    const item = track && track.querySelector('.marquee-item');
+    if (!viewport || !track || !item) return;
+    const W = item.offsetWidth;
+    const V = viewport.offsetWidth;
+    if (!W || !V) return;
+    const n = Math.max(2, Math.ceil(V / W) + 1);
+    track.innerHTML = item.outerHTML.repeat(n);
+    const speed = 70; // px/s
+    const duration = Math.max(((n - 1) * W) / speed * 1000, 6000);
+    el.style.setProperty('--marquee-copy-width', W + 'px');
+    el.style.setProperty('--marquee-viewport-width', V + 'px');
+    el.style.setProperty('--marquee-duration', duration + 'ms');
+    track.style.transform = `translateX(${V - n * W}px)`;
+    el.classList.add('marquee-initialized');
+  });
+}
+
 function renderPurchaseMarquee() {
   const el = document.getElementById('purchase-marquee');
-  if (el) el.innerHTML = buildMarqueeHtml(getAnnouncement(), '📢');
+  if (el) {
+    el.innerHTML = buildMarqueeHtml(getAnnouncement(), '📢');
+    initMarquee(el);
+  }
 }
 
 // 点击滚动条：暂停 / 继续
@@ -561,7 +586,10 @@ function getOperationAnnouncement() {
 
 function renderOperationAnnouncement() {
   const el = document.getElementById('operation-announcement-marquee');
-  if (el) el.innerHTML = buildMarqueeHtml(getOperationAnnouncement(), '📢');
+  if (el) {
+    el.innerHTML = buildMarqueeHtml(getOperationAnnouncement(), '📢');
+    initMarquee(el);
+  }
 }
 
 // 管理员：编辑运营滚动条公告并保存到云端
