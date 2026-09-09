@@ -7,35 +7,58 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>供应链协同管理系统</title>
-  <link rel="stylesheet" href="style.css?v=20260909v245">
+  <link rel="stylesheet" href="style.css?v=20260909v246">
   <!-- 依赖本地化：避免中国大陆/国内部署环境下 jsdelivr 被墙或超时导致整页卡死、Excel 解析与云端同步失败；本地缺失时再回退 CDN -->
-  <script src="xlsx.full.min.js?v=20260909v245"></script>
+  <script src="xlsx.full.min.js?v=20260909v246"></script>
   <script>if(typeof window.XLSX==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
-  <script src="supabase.min.js?v=20260909v245"></script>
+  <script src="supabase.min.js?v=20260909v246"></script>
   <script>if(typeof window.supabase==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');}</script>
-  <script src="lz-string.min.js?v=20260909v245"></script>
+  <script src="lz-string.min.js?v=20260909v246"></script>
   <script>if(typeof window.LZString==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"><\/script>');}</script>
 </head>
 <body>
   <div id="app">
-    <!-- ===== 角色选择页（含排行榜） ===== -->
+    <!-- ===== 主页（Hero + 角色选择 + 排行榜） ===== -->
     <div id="screen-role" class="screen active">
-      <div class="role-splash" id="role-splash">
-        <h2>🏆 今日排行榜</h2>
-        <div id="leaderboard-area-splash" class="leaderboards-row"></div>
-      </div>
-      <div class="role-main" id="role-main">
-        <div class="role-header">
-          <h1>供应链协同管理系统</h1>
-          <p><span style="font-size:11px;color:#aaa;">2.0</span></p>
-        </div>
-        <div class="role-update-time" id="role-update-time"></div>
-        <div class="role-cards">
-          <div class="role-card" data-role="admin">
-            <span class="role-icon">⚙️</span>
-            <span class="role-name">管理员</span>
-            <span class="role-desc">上传数据 / 管理人员</span>
+      <section class="home-hero">
+        <div class="home-hero-bg"></div>
+        <div class="home-hero-overlay"></div>
+        <nav class="home-nav">
+          <div class="home-logo">
+            <span class="home-logo-icon">🚗</span>
+            <span>SKU Manager <small>2.0</small></span>
           </div>
+          <div class="home-nav-actions">
+            <button class="home-nav-btn" onclick="showUsageGuide()" title="使用说明">?</button>
+            <button class="home-nav-btn" onclick="Screen.show('screen-admin-login')" title="管理员入口">👤</button>
+          </div>
+        </nav>
+        <div class="home-hero-content">
+          <div class="home-update-badge">
+            <span class="dot"></span>
+            数据更新至 <span id="home-update-date">--</span> · 实时同步
+          </div>
+          <h1 class="home-title">驾驭未来</h1>
+          <h2 class="home-subtitle">汽车配件 · 供应链协同工作台</h2>
+          <p class="home-desc">从销量库存到供应商交期，让每一个 SKU 的全链路状态清晰可控。</p>
+          <div class="home-actions">
+            <button class="home-btn-primary" onclick="scrollToRoles()">进入工作台 <span>→</span></button>
+            <button class="home-btn-secondary" onclick="showUsageGuide()">了解更多</button>
+          </div>
+        </div>
+        <div class="home-scroll-hint" onclick="scrollToRoles()">
+          <span>SCROLL</span>
+          <div class="home-scroll-line"></div>
+        </div>
+      </section>
+
+      <section class="home-roles-section" id="home-roles-section">
+        <div class="home-section-header">
+          <h3>选择角色进入</h3>
+          <p>根据你的岗位权限，点击进入对应工作台</p>
+          <div id="role-update-time" style="display:none"></div>
+        </div>
+        <div class="role-cards">
           <div class="role-card" data-role="operation">
             <span class="role-icon">📊</span>
             <span class="role-name">运营</span>
@@ -51,9 +74,14 @@
             <span class="role-name">采购</span>
             <span class="role-desc">填写交期 / 供应商追踪</span>
           </div>
+          <div class="role-card" data-role="admin">
+            <span class="role-icon">⚙️</span>
+            <span class="role-name">管理员</span>
+            <span class="role-desc">上传数据 / 管理人员</span>
+          </div>
         </div>
         <div id="leaderboard-area" class="role-leaderboard-fixed"></div>
-      </div>
+      </section>
     </div>
 
     <!-- ===== 管理员登录 ===== -->
@@ -509,8 +537,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script src="config.js?v=20260909v245"></script>
-  <script src="sync_config.js?v=20260909v245"></script>
-  <script src="app.js?v=20260909v245"></script>
+  <script src="config.js?v=20260909v246"></script>
+  <script src="sync_config.js?v=20260909v246"></script>
+  <script src="app.js?v=20260909v246"></script>
 </body>
 </html>

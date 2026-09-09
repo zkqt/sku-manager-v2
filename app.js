@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v245';
+const APP_CODE_VERSION = '20260909v246';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -247,15 +247,16 @@ const Screen = {
 };
 
 // ===== 排行榜（登录页显示） =====
-// mode: 'all' 显示昨日+今日四个榜；'today' 只显示今日两个榜（splash动画用）
+// mode: 'all' 显示昨日+今日四个榜；'today' 只显示今日两个榜（兼容旧动画调用）
 function renderLeaderboard(mode) {
   mode = mode || 'all';
-  // 刷新数据更新时间
+  // 刷新数据更新时间（兼容旧容器 + 新 Hero 容器）
+  const d = Store.getLastUpdateDate();
+  const dateText = d || '--';
   const updEl = $('#role-update-time');
-  if (updEl) {
-    const d = Store.getLastUpdateDate();
-    updEl.textContent = d ? '数据更新至 ' + d : '暂无数据更新';
-  }
+  if (updEl) updEl.textContent = d ? '数据更新至 ' + d : '暂无数据更新';
+  const homeDate = $('#home-update-date');
+  if (homeDate) homeDate.textContent = dateText;
   const yesterday = Store.nagLeaderboard('yesterday');
   const today = Store.nagLeaderboard('today');
 
@@ -302,16 +303,9 @@ function renderLeaderboard(mode) {
       '</div>';
   }
 
-  // 渲染到两个位置：splash动画层（只显示今日） + 主区域（显示全部）
-  const splashEl = $('#leaderboard-area-splash');
+  // 渲染到主区域排行榜容器
   const mainEl = $('#leaderboard-area');
-  if (splashEl && mode === 'today') splashEl.innerHTML = html;
-  if (mainEl && mode === 'all') mainEl.innerHTML = html;
-  // 如果传 all 也顺便更新 splash，避免首次加载后切回时为空
-  if (splashEl && mode === 'all') splashEl.innerHTML = '<div class="leaderboards-row">' +
-    renderBoard(today.buyers, '今日人气王', '🔥', 'theme-red') +
-    renderBoard(today.users, '今日催更王', '⚡', 'theme-yellow') +
-    '</div>';
+  if (mainEl) mainEl.innerHTML = html;
 }
 
 // ===== 弹窗 =====
@@ -488,19 +482,39 @@ function formatUpdateTimeText(iso) {
 // 生成滚动条 DOM；text 为滚动文本，icon 为左侧图标
 function buildMarqueeHtml(text, icon) {
   const safe = escapeHtml(text);
+  // 初始 4 个副本，initMarquee 会按视口宽度自动克隆到足够多，确保无缝滚动
+  const items = Array(4).fill(`<span class="marquee-item">${safe}</span>`).join('');
   return `<div class="marquee" onclick="toggleMarquee(this)" title="点击暂停 / 继续">
     <span class="marquee-icon">${icon}</span>
-    <div class="marquee-viewport"><div class="marquee-track">
-      <span class="marquee-item">${safe}</span>
-      <span class="marquee-item">${safe}</span>
-    </div></div>
+    <div class="marquee-viewport"><div class="marquee-track">${items}</div></div>
     <span class="marquee-hint">点击暂停</span>
   </div>`;
 }
 
+// 根据实际视口宽度补充副本，保证内容足够覆盖 2 倍视口，滚动无缝且不突然消失
+function initMarquee(el) {
+  if (!el) return;
+  requestAnimationFrame(() => {
+    const viewport = el.querySelector('.marquee-viewport');
+    const track = el.querySelector('.marquee-track');
+    if (!viewport || !track) return;
+    let safety = 0;
+    while (track.scrollWidth < viewport.clientWidth * 2 && safety < 8) {
+      Array.from(track.children).forEach(c => track.appendChild(c.cloneNode(true)));
+      safety++;
+    }
+    // 速度约 45px/s，内容越长越慢，避免太快
+    const duration = Math.max(track.scrollWidth / 45, 16);
+    track.style.animationDuration = duration + 's';
+  });
+}
+
 function renderPurchaseMarquee() {
   const el = document.getElementById('purchase-marquee');
-  if (el) el.innerHTML = buildMarqueeHtml(getAnnouncement(), '📢');
+  if (el) {
+    el.innerHTML = buildMarqueeHtml(getAnnouncement(), '📢');
+    initMarquee(el);
+  }
 }
 
 // 点击滚动条：暂停 / 继续
@@ -569,7 +583,10 @@ function getOperationAnnouncement() {
 
 function renderOperationAnnouncement() {
   const el = document.getElementById('operation-announcement-marquee');
-  if (el) el.innerHTML = buildMarqueeHtml(getOperationAnnouncement(), '📢');
+  if (el) {
+    el.innerHTML = buildMarqueeHtml(getOperationAnnouncement(), '📢');
+    initMarquee(el);
+  }
 }
 
 // 管理员：编辑运营滚动条公告并保存到云端
@@ -7053,23 +7070,14 @@ function setupTabs() {
 
 // ===== 登录页动画 =====
 function startRoleAnimation() {
-  const splash = $('#role-splash');
-  const main = $('#role-main');
-  if (!splash || !main) return;
-  // 进入时先渲染今日排行榜到 splash
-  renderLeaderboard('today');
-  if (sessionStorage.getItem('splashShown')) {
-    splash.classList.add('hidden');
-    main.classList.add('visible');
-  } else {
-    sessionStorage.setItem('splashShown', '1');
-    splash.classList.remove('hidden');
-    main.classList.remove('visible');
-    setTimeout(() => {
-      splash.classList.add('hidden');
-      main.classList.add('visible');
-    }, 3000);
-  }
+  // 新主页无 splash 遮罩，直接进入即渲染全部排行榜
+  renderLeaderboard('all');
+}
+
+// 首页 Hero 滚动到角色选择区
+function scrollToRoles() {
+  const el = $('#home-roles-section');
+  if (el) el.scrollIntoView({ behavior: 'smooth' });
 }
 
 // ===== 初始化 =====
