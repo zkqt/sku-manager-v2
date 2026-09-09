@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260909v242';
+const APP_CODE_VERSION = '20260909v243';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -174,6 +174,14 @@ function nameMatches(fieldValue, name) {
   if (!fieldValue || !name) return false;
   const nameNorm = normalizeText(name);
   return String(fieldValue).split(/[,，、/\n]+/).some(n => normalizeText(n.trim()) === nameNorm);
+}
+
+// 采购员字段「精确等于」匹配：与 Excel 按采购员筛选的「等于」行为一致，
+// 不再按逗号/斜杠/换行拆分做包含匹配（避免「钱芷薇,张三」这类多人共管行被同时计入两人看板）。
+// 仅用于采购看板的 buyer 过滤；运营/计划端仍用 nameMatches 支持多人共管。
+function buyerExact(buyer, name) {
+  if (!buyer || !name) return false;
+  return normalizeText(String(buyer).trim()) === normalizeText(String(name).trim());
 }
 
 // 统一日期格式为 2026/6/8（采购交期专用）
@@ -4757,7 +4765,7 @@ const PurchaseUI = {
       // 品类负责人主表与普通采购员一致：只看带自己名字的 SKU；
       // 其负责品类的全量供应商追踪表在其对应的“品类分表”中查看（renderCategorySupplier），
       // 不会把主表整体替换成负责品类，避免吞掉自己的采购 SKU。
-      filtered = data.filter(r => nameMatches(r.buyer, this.userName));
+      filtered = data.filter(r => buyerExact(r.buyer, this.userName));
     }
     // 兜底路径（未上传发货明细时）也要合并取消/退货表的供应商库存，避免采购页该列空白
     const cancelList = Store.getData('cancel') || [];
@@ -4907,7 +4915,7 @@ const PurchaseUI = {
     // 权限过滤：与供应商追踪表一致（采购员 / 品类负责人主表均只看带自己名字的 SKU；
     // 品类负责人负责品类的全量数据在对应品类分表查看）。
     if (!this.isAdmin) {
-      rows = rows.filter(r => nameMatches(r.buyer, this.userName));
+      rows = rows.filter(r => buyerExact(r.buyer, this.userName));
     }
     // 把销量大表(sales)的 9月交付字段匹配到供应商行（纯数值，无绿+/红- 差异），供采购主表展示
     rows = this.attachSalesMetrics(rows);
@@ -5065,8 +5073,8 @@ const PurchaseUI = {
       const buyer = n.buyer || parts[parts.length - 1];
       const role = n.role || (parts.length >= 3 ? parts[0] : 'unknown');
       if (!channelSku || !buyer) return;
-      // 采购工作台只统计“当前采购员”被催的工厂；管理员看全部
-      if (!this.isAdmin && !nameMatches(buyer, this.userName)) return;
+      // 采购工作台只统计"当前采购员"被催的工厂；管理员看全部
+      if (!this.isAdmin && !buyerExact(buyer, this.userName)) return;
       const factories = [...new Set(allSupplier.filter(r => normalizeText(r.channelSku) === normalizeText(channelSku)).map(r => String(r.supplier || '').trim()).filter(Boolean))];
       factories.forEach(fac => {
         if (!nagFactorySkus[fac]) nagFactorySkus[fac] = new Set();
@@ -5127,8 +5135,8 @@ const PurchaseUI = {
   exportSupplier() {
     const all = Store.getData('supplier') || [];
     if (!all.length) { showToast('无数据可导出', 'error'); return; }
-    // 还原“原始上传的供应商追踪表”：不过滤当前表格筛选，且用 _raw 原始列/值，未合并发货明细
-    const data = this.isAdmin ? all : all.filter(r => nameMatches(r.buyer, this.userName));
+    // 还原"原始上传的供应商追踪表"：不过滤当前表格筛选，且用 _raw 原始列/值，未合并发货明细
+    const data = this.isAdmin ? all : all.filter(r => buyerExact(r.buyer, this.userName));
     if (!data.length) { showToast('无数据可导出', 'error'); return; }
     const rawLike = data.filter(r => r && r._raw && Object.keys(r._raw).length);
     let headers, rows;
@@ -5260,7 +5268,7 @@ const PurchaseUI = {
     // 非管理员只看自己名下的行；名下无数据时结果为空（不回退全量，避免权限逃逸）
     let filtered = all;
     if (!this.isAdmin) {
-      filtered = all.filter(r => nameMatches(r.buyer, this.userName));
+      filtered = all.filter(r => buyerExact(r.buyer, this.userName));
     }
 
     // 获取列定义（从第一行的_raw对象）
@@ -5520,7 +5528,7 @@ const PurchaseUI = {
     if (this.isAdmin) {
       remaining = [];
     } else {
-      remaining = all.filter(r => !nameMatches(r.buyer, this.userName));
+      remaining = all.filter(r => !buyerExact(r.buyer, this.userName));
     }
     Store.setData('replenish', remaining).then(() => {
       this.replenishFilters = {};
