@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260908v240';
+const APP_CODE_VERSION = '20260909v241';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -646,7 +646,7 @@ function getPageData(data, page) {
 // 销量库存大表（sales）已改为云端同步+增量更新：管理员统一上传后按渠道/SKU/FBA/组合/PO/国家合并，运营/计划/采购自动拉取。
 const SYNC_TYPES = [
   { key: 'sales', label: '销量库存大表（云端同步·增量更新）' },
-  { key: 'delivery', label: '发货明细（可云端同步）' },
+  { key: 'delivery', label: '发货明细（可云端同步）', defaultOff: true },
   { key: 'supplier', label: '供应商追踪' },
   { key: 'cancel', label: '取消/退货' },
   { key: 'replenish', label: '补货' },
@@ -665,7 +665,7 @@ const SYNC_TYPES = [
 // 用户选择要同步的表格（持久化在 localStorage: skuv2_sync_sel）
 const SyncSel = {
   load() {
-    const defaults = SYNC_TYPES.filter(t => !t.localOnly && !t.hidden).map(t => t.key);
+    const defaults = SYNC_TYPES.filter(t => !t.localOnly && !t.hidden && !t.defaultOff).map(t => t.key);
     const hidden = SYNC_TYPES.filter(t => t.hidden).map(t => t.key);
     try {
       const raw = localStorage.getItem('skuv2_sync_sel');
@@ -696,10 +696,10 @@ const Sync = {
     if (def && def.hidden) return true;      // 隐藏类型（差异基线）始终同步
     try {
       const raw = localStorage.getItem('skuv2_sync_sel');
-      if (!raw) return !def || !def.localOnly;
+      if (!raw) return !def || (!def.localOnly && !def.defaultOff);
       const a = JSON.parse(raw);
       return Array.isArray(a) ? a.includes(type) : true;
-    } catch (e) { return !def || !def.localOnly; }
+    } catch (e) { return !def || (!def.localOnly && !def.defaultOff); }
   },
 
   init() {
@@ -1096,7 +1096,7 @@ const Sync = {
       if (!rows) throw (lastErr || new Error('拉取清单失败'));
 
       // 跳过仍标记为 localOnly 的表（当前已无本地大表，全部可云端同步）
-      const rowsToPull = rows.filter(r => !(SYNC_TYPES.find(t => t.key === r.type && t.localOnly)));
+      const rowsToPull = rows.filter(r => this.shouldSync(r.type));
       const localUpdateTimes = Store.getUpdateTimes();
 
       // 1. 先跳过未变化的表：以“本机已拉取/推送过的云端时间戳”为准（精确等于才跳过），
