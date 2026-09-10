@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260910v257';
+const APP_CODE_VERSION = '20260910v258';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -1030,8 +1030,8 @@ const Sync = {
 
   // 用 in(chunk_index) 一次查询一批（比 range OFFSET 更快），多批并发，sales/delivery 可并行拉取。
   async _pullChunksBatched(type, total, onProgress) {
-    const BATCH = 24;      // 每批 in 查询 24 个 chunk_index
-    const CONCURRENCY = 6; // 同时 6 批（144 片/轮）
+    const BATCH = 32;      // 每批 in 查询 32 个 chunk_index
+    const CONCURRENCY = 10; // 同时 10 批（320 片/轮）
     const TIMEOUT = 60000; // 单批最长等待 60 秒
     const RETRIES = 2;     // 单批失败再重试 2 次
     const merged = new Array(total); // 按索引预分配，避免乱序合并
@@ -1113,7 +1113,7 @@ const Sync = {
   // options.silent=true 时不弹错误 toast（用于后台自动拉取）
   async pull(onProgress, options = {}) {
     if (!this.enabled || !this.client) return false;
-    const { silent = false } = options;
+    const { silent = false, only = null } = options;
     try {
       // 阶段1：先只读 type + updated_at 清单，避免一次性下载所有 payload 导致超时
       let rows = null, lastErr = null;
@@ -1136,7 +1136,8 @@ const Sync = {
       if (!rows) throw (lastErr || new Error('拉取清单失败'));
 
       // 跳过仍标记为 localOnly 的表（当前已无本地大表，全部可云端同步）
-      const rowsToPull = rows.filter(r => this.shouldSync(r.type));
+      // only 非空时（首屏分步拉取），只拉指定类型的表，其余后台补齐
+      const rowsToPull = rows.filter(r => this.shouldSync(r.type) && (!only || only.includes(r.type)));
       const localUpdateTimes = Store.getUpdateTimes();
 
       // 1. 先跳过未变化的表：以“本机已拉取/推送过的云端时间戳”为准（精确等于才跳过），
@@ -1409,7 +1410,16 @@ const Sync = {
     }
 
     showGlobalLoading('准备从云端拉取数据...', 0);
-    const ok = await this.pull((label, pct) => updateGlobalLoading(label, pct), { silent });
+    // 非管理员：分步拉取——先拉「当前角色立刻要用」的关键表并渲染界面，
+    // 其余表（白名单/供货/货品/密码/更新时间等）在后台静默补齐，显著缩短新机首屏等待。
+    const isAdmin = (typeof currentRole !== 'undefined' && currentRole === 'admin');
+    let ok;
+    if (isAdmin) {
+      ok = await this.pull((label, pct) => updateGlobalLoading(label, pct), { silent });
+    } else {
+      const critical = ['personnel', 'nags', 'sales', 'supplier', 'cancel', 'replenish'];
+      ok = await this.pull((label, pct) => updateGlobalLoading(label, pct), { silent, only: critical });
+    }
     hideGlobalLoading();
     if (ok) {
       if (typeof currentRole !== 'undefined' && currentRole === 'purchase') PurchaseUI.init(currentUserName);
@@ -1417,6 +1427,11 @@ const Sync = {
       else if (currentRole === 'operation') OperationUI.init(currentUserName);
       else { renderLeaderboard('all'); AdminUI.updateDataStatus(); AdminUI.renderPersonnel(); AdminUI.renderHistory(); AdminUI.renderUploadSummary(); }
       showToast('✓ 已从云端加载数据', 'success');
+      // 后台补齐其余非关键表，不阻塞首屏；auto-refresh 后续也会持续校准
+      if (!isAdmin) {
+        const rest = SYNC_TYPES.filter(t => !t.localOnly && !t.hidden && !['personnel','nags','sales','supplier','cancel','replenish'].includes(t.key)).map(t => t.key);
+        if (rest.length) this.pull({ silent: true, only: rest }).catch(e => debugLog('[Sync] 后台补齐其余表失败(忽略): ' + (e && e.message)));
+      }
     }
     return ok;
   }
