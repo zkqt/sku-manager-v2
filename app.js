@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260910v256';
+const APP_CODE_VERSION = '20260910v257';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -3209,7 +3209,7 @@ const COLS = {
     { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
     { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
     { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
-    { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'multi', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
+    { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
     { f: 'waitContainer', l: '待装柜' },
     { f: 'loading', l: '装柜中' },
     { f: 'waitShip', l: '待发货' },
@@ -3242,7 +3242,7 @@ const COLS = {
     { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
     { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
     { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
-    { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'multi', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
+    { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
     { f: 'waitContainer', l: '待装柜' },
     { f: 'loading', l: '装柜中' },
     { f: 'waitShip', l: '待发货' },
@@ -3291,7 +3291,7 @@ const COLS = {
     { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
     { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
     { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
-    { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'multi', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
+    { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
     { f: 'cancelSupplierStock', l: '供应商库存', filter: 'multi', filterKey: 'cancel-supplier-stock', filterField: 'cancelSupplierStock' },
     { f: 'sepDeliverable', l: '9月可交数量', edit: true, filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
     { f: 'sepDeliveryDate', l: '9月交期', edit: true, filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
@@ -6301,6 +6301,7 @@ const PlanUI = {
     this.currentPage = 0;
     // 切换账号时重置数值筛选和多选表头筛选，避免继承上一个账号的筛选状态
     this.augTargetFilter = null; this.deliveryQtyFilter = null; this.remainingDeliveryFilter = null;
+    this.sepOnShelfFilter = null; this.sepDeliverableFilter = null;
     PLAN_MULTI_FILTERS.forEach(d => this[d.prop] = new Set());
     const badge = this.isAdmin ? ` <span class="admin-badge">管理员</span>` : '';
     $('#plan-username').innerHTML = escapeHtml(userName) + badge;
@@ -6502,6 +6503,7 @@ const OperationUI = {
     this.currentPage = 0;
     // 切换账号时重置数值筛选和多选表头筛选，避免继承上一个账号的筛选状态
     this.augTargetFilter = null; this.deliveryQtyFilter = null; this.remainingDeliveryFilter = null;
+    this.sepOnShelfFilter = null; this.sepDeliverableFilter = null;
     OP_MULTI_FILTERS.forEach(d => this[d.prop] = new Set());
     const badge = this.isAdmin ? ` <span class="admin-badge">管理员</span>` : '';
     $('#op-username').innerHTML = escapeHtml(userName) + badge;
@@ -6708,6 +6710,7 @@ const PLAN_OP_NUM_FILTERS = [
   { prop: 'augTargetFilter', col: 'aug-target', field: 'augTarget', label: '9月目标' },
   { prop: 'deliveryQtyFilter', col: 'delivery-qty', field: 'deliveryQty', label: '交付数量' },
   { prop: 'remainingDeliveryFilter', col: 'remaining-delivery', field: 'remainingDelivery', label: '剩余交付' },
+  { prop: 'sepOnShelfFilter', col: 'sep-on-shelf', field: 'sepOnShelf', label: '9月预计上架' },
   { prop: 'sepDeliverableFilter', col: 'sep-deliverable', field: 'sepDeliverable', label: '9月可交数量' },
 ];
 Object.assign(PlanUI, numericFilterMixin('plan', PLAN_OP_NUM_FILTERS, 'renderOverview'));
@@ -6812,7 +6815,6 @@ const PLAN_MULTI_FILTERS = [
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
   { col: 'plan-is-fba', prop: 'planIsFbaFilter', field: 'isFba', label: '是否FBA' },
   { col: 'plan-is-combo', prop: 'planIsComboFilter', field: 'isCombo', label: '是否组合' },
-  { col: 'sep-on-shelf', prop: 'sepOnShelfFilter', field: 'sepOnShelf', label: '9月预计上架' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
   { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '9月采购备注' },
 ];
@@ -6826,7 +6828,6 @@ const OP_MULTI_FILTERS = [
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
   { col: 'op-is-fba', prop: 'opIsFbaFilter', field: 'isFba', label: '是否FBA' },
   { col: 'op-is-combo', prop: 'opIsComboFilter', field: 'isCombo', label: '是否组合' },
-  { col: 'sep-on-shelf', prop: 'sepOnShelfFilter', field: 'sepOnShelf', label: '9月预计上架' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
   { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '9月采购备注' },
 ];
@@ -6865,6 +6866,7 @@ const PURCHASE_NUM_FILTERS = [
   { prop: 'pendingComboFilter', col: 'pending-combo', field: 'augPendingBoxCombo', label: '9月待交付箱单-组合配件' },
   { prop: 'pendingFilter', col: 'pending', field: 'augPendingBox', label: '9月待交付箱单' },
   { prop: 'augSpotBoxFilter', col: 'aug-spot-box', field: 'augSpotBox', label: '9月现货箱单' },
+  { prop: 'sepOnShelfFilter', col: 'sep-on-shelf', field: 'sepOnShelf', label: '9月预计上架' },
   { prop: 'sepDeliverableFilter', col: 'sep-deliverable', field: 'sepDeliverable', label: '9月可交数量' },
   { prop: 'octDeliverableFilter', col: 'oct-deliverable', field: 'octDeliverable', label: '10月可交数量' },
 ];
