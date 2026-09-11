@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260911v262';
+const APP_CODE_VERSION = '20260911v263';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -3840,11 +3840,27 @@ const AdminUI = {
           syncPromises.push(Store.setData('sales', merged));
         }
       } else if (fileType === 'ops_detail') {
-        // 运营看板明细：按 渠道+SKU+FBA+组合+PO+国家 增量合并，只更新 4 个库存/到货字段
-        const old = Store.getData('ops_detail');
-        const merged = mergeOpsDetailIncremental(projectOpsDetailSlim(old), projectOpsDetailSlim(result.data));
-        debugLog('[handleUpload] ops_detail 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
-        syncPromises.push(Store.setData('ops_detail', merged));
+        // 运营看板明细：管理员可选择「增量更新」或「全部覆盖」。
+        // 两种模式都只上传 OPS_DETAIL_SLIM_FIELDS 指定字段，区别在合并策略。
+        const mode = document.querySelector('input[name="ops-detail-upload-mode"]:checked')?.value || 'incremental';
+        const slimNew = projectOpsDetailSlim(result.data);
+        if (mode === 'overwrite') {
+          const ok = confirm('⚠️ 你选择了「全部覆盖」模式。\n\n这将清空云端已有的运营看板明细，并完全用本次上传的 ' + result.data.length + ' 条数据替换。\n其他电脑下次打开时会拉取这份新表，旧的明细记录不再保留。\n\n确定要继续吗？');
+          if (!ok) {
+            statusEl.className = 'upload-status';
+            statusEl.textContent = '已取消：未覆盖云端运营看板明细';
+            showToast('已取消，未做任何修改', 'warn');
+            return;
+          }
+          debugLog('[handleUpload] ops_detail 全部覆盖：新 ' + slimNew.length + ' 条');
+          syncPromises.push(Store.setData('ops_detail', slimNew));
+        } else {
+          // 增量更新（默认）：按 opsDetailKey 增量合并，只更新 4 个库存/到货字段
+          const old = Store.getData('ops_detail');
+          const merged = mergeOpsDetailIncremental(projectOpsDetailSlim(old), slimNew);
+          debugLog('[handleUpload] ops_detail 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
+          syncPromises.push(Store.setData('ops_detail', merged));
+        }
       } else if (overwrite && fileType !== 'supplier') {
         syncPromises.push(Store.setData(fileType, result.data));
       } else {
@@ -3961,6 +3977,17 @@ const AdminUI = {
       desc.textContent = '清空云端已有销量库存大表，完全用本次上传的 ' + SALES_SLIM_FIELDS.length + ' 个字段替换（旧数据不再保留）。';
     } else {
       desc.textContent = '按 渠道+SKU+FBA+组合+PO+国家 合并；同键只更新销量/库存/目标等字段，旧表有而新表没有的行保留。';
+    }
+  },
+
+  // 切换运营看板明细上传模式说明
+  onOpsDetailModeChange(mode) {
+    const desc = $('#ops-detail-mode-desc');
+    if (!desc) return;
+    if (mode === 'overwrite') {
+      desc.textContent = '清空云端已有运营看板明细，完全用本次上传的数据替换（旧数据不再保留）。';
+    } else {
+      desc.textContent = '按 渠道+SKU+FBA+组合+PO+国家 与销量大表匹配；同键只更新这4个字段，旧数据保留。';
     }
   },
 

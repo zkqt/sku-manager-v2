@@ -9,11 +9,11 @@
   <title>供应链协同管理系统</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preload" as="image" href="hero-bg.jpg" type="image/jpeg">
-  <link rel="stylesheet" href="style.css?v=20260911v262">
+  <link rel="stylesheet" href="style.css?v=20260911v263">
   <!-- 依赖本地化 + defer 延迟加载：库脚本不再阻塞首屏渲染，主页(Hero/角色卡)可秒出；Excel 解析/云端同步用到的库在后台下载 -->
-  <script defer src="supabase.min.js?v=20260911v262"></script>
+  <script defer src="supabase.min.js?v=20260911v263"></script>
   <script defer>if(typeof window.supabase==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);}</script>
-  <script defer src="lz-string.min.js?v=20260911v262"></script>
+  <script defer src="lz-string.min.js?v=20260911v263"></script>
   <script defer>if(typeof window.LZString==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js';document.head.appendChild(s);}</script>
 </head>
 <body>
@@ -143,7 +143,15 @@
           <div class="upload-zone" data-filetype="ops_detail">
             <h3>📊 运营看板明细（云端同步·增量更新）</h3>
             <p class="upload-desc">每天更新的库存/到货/断货数据：预计断货日期、最近批次预计到货日期、最近批次数量、库存健康状态</p>
-            <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0">按 渠道+SKU+FBA+组合+PO+国家 与销量大表匹配；同键只更新这4个字段，旧数据保留。</p>
+            <div style="display:flex;gap:16px;align-items:center;margin:8px 0 4px;font-size:13px;">
+              <label style="cursor:pointer;">
+                <input type="radio" name="ops-detail-upload-mode" value="incremental" checked onchange="AdminUI.onOpsDetailModeChange(this.value)"> 增量更新（推荐）
+              </label>
+              <label style="cursor:pointer;">
+                <input type="radio" name="ops-detail-upload-mode" value="overwrite" onchange="AdminUI.onOpsDetailModeChange(this.value)"> 全部覆盖
+              </label>
+            </div>
+            <p class="upload-mode-desc" id="ops-detail-mode-desc" style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">按 渠道+SKU+FBA+组合+PO+国家 与销量大表匹配；同键只更新这4个字段，旧数据保留。</p>
             <label class="file-label">
               <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('ops_detail', this.files[0])">
               <span class="btn-primary btn-sm">选择文件</span>
@@ -530,8 +538,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script defer src="config.js?v=20260911v262"></script>
-  <script defer src="sync_config.js?v=20260911v262"></script>
-  <script defer src="app.js?v=20260911v262"></script>
+  <script defer src="config.js?v=20260911v263"></script>
+  <script defer src="sync_config.js?v=20260911v263"></script>
+  <script defer src="app.js?v=20260911v263"></script>
 </body>
 </html>
