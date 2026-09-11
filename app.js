@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260911v261';
+const APP_CODE_VERSION = '20260911v262';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -3188,7 +3188,7 @@ const Merger = {
         octDeliverable: numAgg('octDeliverable'),
         octDeliveryDate: firstAgg('octDeliveryDate'),
         octRemark: txtAgg('octRemark'),
-        // 运营看板明细（T-2）：按 渠道+SKU+FBA+组合+PO+国家 精确匹配
+        // 运营看板明细：按 渠道+SKU+FBA+组合+PO+国家 精确匹配
         stockoutDate: ops.stockoutDate || '',
         nextBatchDate: ops.nextBatchDate || '',
         nextBatchQty: ops.nextBatchQty || '',
@@ -3260,17 +3260,17 @@ const COLS = {
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
     { f: 'planManager', l: '计划负责人' },
-    { f: 'overseasStock', l: '海外仓库存' },
-    { f: 'inTransit', l: '在途' },
-    { f: 'domesticStock', l: '国内实仓' },
+    { f: 'overseasStock', l: '海外仓库存(T-2)' },
+    { f: 'inTransit', l: '在途(T-2)' },
+    { f: 'domesticStock', l: '国内实仓(T-2)' },
     { f: 'domesticOrder', l: '国内订单' },
     { f: 'cancelSupplierStock', l: '供应商库存' },
-    { f: 'stockoutDate', l: '预计断货日期(T-2)', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
-    { f: 'nextBatchDate', l: '最近批次预计到货日期(T-2)', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
-    { f: 'nextBatchQty', l: '最近批次数量(T-2)', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
+    { f: 'stockoutDate', l: '预计断货日期', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
+    { f: 'nextBatchDate', l: '最近批次预计到货日期', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
+    { f: 'nextBatchQty', l: '最近批次数量', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
     { f: 'augSpotBox', l: '9月现货箱单' },
     { f: 'availableDays', l: '可售天数' },
-    { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
+    { f: 'augTarget', l: '9月目标(T-2)', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
     { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
     { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
     { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
@@ -3281,7 +3281,7 @@ const COLS = {
     { f: 'sepDeliverable', l: '9月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
     { f: 'sepDeliveryDate', l: '9月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
     { f: 'sepRemark', l: '9月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
-    { f: 'stockHealthStatus', l: '库存健康状态(T-2)', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
+    { f: 'stockHealthStatus', l: '库存健康状态', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
   ],
 
   // 计划视图列（含优先级、供应商库存、催更按钮）
@@ -3295,17 +3295,17 @@ const COLS = {
     { f: 'planManager', l: '计划负责人', filter: 'multi', filterKey: 'plan-manager', filterField: 'planManager' },
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
-    { f: 'overseasStock', l: '海外仓库存' },
-    { f: 'inTransit', l: '在途' },
-    { f: 'domesticStock', l: '国内实仓' },
+    { f: 'overseasStock', l: '海外仓库存(T-2)' },
+    { f: 'inTransit', l: '在途(T-2)' },
+    { f: 'domesticStock', l: '国内实仓(T-2)' },
     { f: 'domesticOrder', l: '国内订单' },
     { f: 'cancelSupplierStock', l: '供应商库存' },
-    { f: 'stockoutDate', l: '预计断货日期(T-2)', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
-    { f: 'nextBatchDate', l: '最近批次预计到货日期(T-2)', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
-    { f: 'nextBatchQty', l: '最近批次数量(T-2)', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
+    { f: 'stockoutDate', l: '预计断货日期', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
+    { f: 'nextBatchDate', l: '最近批次预计到货日期', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
+    { f: 'nextBatchQty', l: '最近批次数量', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
     { f: 'augSpotBox', l: '9月现货箱单' },
     { f: 'availableDays', l: '可售天数' },
-    { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
+    { f: 'augTarget', l: '9月目标(T-2)', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
     { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
     { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
     { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
@@ -3316,7 +3316,7 @@ const COLS = {
     { f: 'sepDeliverable', l: '9月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
     { f: 'sepDeliveryDate', l: '9月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
     { f: 'sepRemark', l: '9月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
-    { f: 'stockHealthStatus', l: '库存健康状态(T-2)', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
+    { f: 'stockHealthStatus', l: '库存健康状态', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
   ],
 
   // 可展开的隐藏字段
@@ -6765,12 +6765,12 @@ const OperationUI = {
 
 // 计划/运营页接入 Excel 数值筛选（表头触发：9月目标、剩余交付）
 const PLAN_OP_NUM_FILTERS = [
-  { prop: 'augTargetFilter', col: 'aug-target', field: 'augTarget', label: '9月目标' },
+  { prop: 'augTargetFilter', col: 'aug-target', field: 'augTarget', label: '9月目标(T-2)' },
   { prop: 'deliveryQtyFilter', col: 'delivery-qty', field: 'deliveryQty', label: '交付数量' },
   { prop: 'remainingDeliveryFilter', col: 'remaining-delivery', field: 'remainingDelivery', label: '剩余交付' },
   { prop: 'sepOnShelfFilter', col: 'sep-on-shelf', field: 'sepOnShelf', label: '9月预计上架' },
   { prop: 'sepDeliverableFilter', col: 'sep-deliverable', field: 'sepDeliverable', label: '9月可交数量' },
-  { prop: 'nextBatchQtyFilter', col: 'next-batch-qty', field: 'nextBatchQty', label: '最近批次数量(T-2)' },
+  { prop: 'nextBatchQtyFilter', col: 'next-batch-qty', field: 'nextBatchQty', label: '最近批次数量' },
 ];
 Object.assign(PlanUI, numericFilterMixin('plan', PLAN_OP_NUM_FILTERS, 'renderOverview'));
 Object.assign(OperationUI, numericFilterMixin('op', PLAN_OP_NUM_FILTERS, 'renderTable'));
@@ -6872,11 +6872,11 @@ const PLAN_MULTI_FILTERS = [
   { col: 'country', prop: 'countryFilter', field: 'country', label: '目的国家' },
   { col: 'plan-manager', prop: 'planManagerFilter', field: 'planManager', label: '计划负责人' },
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
-  { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期(T-2)' },
-  { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期(T-2)' },
+  { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期' },
+  { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
   { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '9月采购备注' },
-  { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态(T-2)' },
+  { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态' },
 ];
 const OP_MULTI_FILTERS = [
   { col: 'status', prop: 'statusFilter', field: 'salesStatus', label: '销售状态' },
@@ -6886,11 +6886,11 @@ const OP_MULTI_FILTERS = [
   { col: 'country', prop: 'countryFilter', field: 'country', label: '目的国家' },
   { col: 'op-manager', prop: 'opManagerFilter', field: 'opManager', label: '运营负责人' },
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
-  { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期(T-2)' },
-  { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期(T-2)' },
+  { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期' },
+  { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
   { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '9月采购备注' },
-  { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态(T-2)' },
+  { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态' },
 ];
 Object.assign(PlanUI, headerMultiSelectMixin('plan', PLAN_MULTI_FILTERS, 'renderOverview', 'planManager'));
 Object.assign(OperationUI, headerMultiSelectMixin('op', OP_MULTI_FILTERS, 'renderTable', 'opManager'));
