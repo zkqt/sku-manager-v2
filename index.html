@@ -9,11 +9,11 @@
   <title>供应链协同管理系统</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preload" as="image" href="hero-bg.jpg" type="image/jpeg">
-  <link rel="stylesheet" href="style.css?v=20260911v260">
+  <link rel="stylesheet" href="style.css?v=20260911v261">
   <!-- 依赖本地化 + defer 延迟加载：库脚本不再阻塞首屏渲染，主页(Hero/角色卡)可秒出；Excel 解析/云端同步用到的库在后台下载 -->
-  <script defer src="supabase.min.js?v=20260911v260"></script>
+  <script defer src="supabase.min.js?v=20260911v261"></script>
   <script defer>if(typeof window.supabase==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);}</script>
-  <script defer src="lz-string.min.js?v=20260911v260"></script>
+  <script defer src="lz-string.min.js?v=20260911v261"></script>
   <script defer>if(typeof window.LZString==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js';document.head.appendChild(s);}</script>
 </head>
 <body>
@@ -205,21 +205,9 @@
             <span class="upload-status" id="status-replenish"></span>
             <button class="btn-sm" style="margin-top:8px;background:#dc3545;color:#fff;border-color:#dc3545" onclick="AdminUI.clearReplenish()" title="清空全部需补订单（不可恢复）">🗑️ 清空需补订单</button>
           </div>
-          <div class="upload-zone" data-filetype="supply">
-            <h3>🔗 供货清单</h3>
-            <p class="upload-desc">渠道SKU/供应商/起订量/品类/供应商状态/采购负责人/后补日期</p>
-            <label class="file-label">
-              <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('supply', this.files[0])">
-              <span class="btn-primary btn-sm">选择文件</span>
-            </label>
-            <label class="checkbox-inline" style="display:block;margin-top:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
-              <input type="checkbox" id="ov-supply" checked> 覆盖上传（清空旧数据，只保留本次文件）
-            </label>
-            <span class="upload-status" id="status-supply"></span>
-          </div>
           <div class="upload-zone" data-filetype="whitelist">
-            <h3>📋 白名单</h3>
-            <p class="upload-desc">供应商/品类/采购负责人/供应商状态</p>
+            <h3>📋 白名单（整合供货清单）</h3>
+            <p class="upload-desc">渠道SKU / 供应商ID / 供应类别 / 采购负责人 / 供应商状态 / 供应商交期(天) / 供货类型（主供/备供）</p>
             <label class="file-label">
               <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('whitelist', this.files[0])">
               <span class="btn-primary btn-sm">选择文件</span>
@@ -542,8 +530,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script defer src="config.js?v=20260911v260"></script>
-  <script defer src="sync_config.js?v=20260911v260"></script>
-  <script defer src="app.js?v=20260911v260"></script>
+  <script defer src="config.js?v=20260911v261"></script>
+  <script defer src="sync_config.js?v=20260911v261"></script>
+  <script defer src="app.js?v=20260911v261"></script>
 </body>
 </html>

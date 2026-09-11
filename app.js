@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260911v260';
+const APP_CODE_VERSION = '20260911v261';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -690,7 +690,6 @@ const SYNC_TYPES = [
   { key: 'supplier', label: '供应商追踪' },
   { key: 'cancel', label: '取消/退货' },
   { key: 'replenish', label: '补货' },
-  { key: 'supply', label: '供货' },
   { key: 'goods', label: '货品表' },
   { key: 'whitelist', label: '白名单' },
   { key: 'personnel', label: '人员名单' },
@@ -1377,7 +1376,7 @@ const Sync = {
 
   startAutoRefresh(intervalMs) {
     if (this._autoTimer) clearInterval(this._autoTimer);
-    // 默认 60 秒：白名单/取消订单/供货清单等不在这里轮询，只有 sales/delivery/supplier/replenish 等热点表才轮询
+    // 默认 60 秒：白名单/取消订单/货品表等不在这里轮询，只有 sales/delivery/supplier/replenish 等热点表才轮询
     this._autoTimer = setInterval(() => this._autoRefreshTick(), intervalMs || 60000);
   },
 
@@ -1402,8 +1401,8 @@ const Sync = {
     // 判断本机是否已有从云端同步的数据（sales 已改为云端同步，应计入）
     const hasCloudLocal =
       Store.getData('supplier').length || Store.getData('cancel').length ||
-      Store.getData('replenish').length || Store.getData('supply').length ||
-      Store.getData('delivery').length || Store.getData('whitelist').length ||
+      Store.getData('replenish').length || Store.getData('delivery').length ||
+      Store.getData('whitelist').length ||
       (Store.getPersonnel().purchase || []).length;
     if (hasCloudLocal) {
       debugLog('[Sync] 本地已有云端数据，跳过首次全屏拉取，改为后台静默刷新');
@@ -1476,7 +1475,7 @@ const Store = {
     }
     // 供应商/交付明细/国内即时库存变化时才自增“采购富数据版本”，供 PurchaseUI 缓存失效（避免无关数据变更也重算）
     if (k === 'data_supplier' || k === 'data_delivery') {
-      this._supplyVersion = (this._supplyVersion || 0) + 1;
+      this._purchaseVersion = (this._purchaseVersion || 0) + 1;
     }
     try {
       const json = JSON.stringify(v);
@@ -1871,7 +1870,7 @@ const Store = {
 
   clearAll() {
     this._memCache.clear();
-    ['sales', 'delivery', 'supplier', 'cancel', 'replenish', 'supply', 'whitelist', 'delivery_first', 'delivery_diff'].forEach(t => {
+    ['sales', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist', 'delivery_first', 'delivery_diff'].forEach(t => {
       localStorage.removeItem(this._key('data_' + t));
     });
     localStorage.removeItem(this._key('personnel'));
@@ -1887,7 +1886,7 @@ const Store = {
     const data = {
       sales: this.getData('sales'), delivery: this.getData('delivery'),
       supplier: this.getData('supplier'), cancel: this.getData('cancel'),
-      replenish: this.getData('replenish'), supplyList: this.getData('supply'),
+      replenish: this.getData('replenish'),
       whitelist: this.getData('whitelist'), deliveryFirst: this.getDeliveryFirst(),
       deliveryDiff: this.getData('delivery_diff'),
       personnel: this.getPersonnel(), history: this.getHistory(),
@@ -1903,7 +1902,6 @@ const Store = {
   importAll(data) {
     if (!data) return false;
     ['sales', 'delivery', 'supplier', 'cancel', 'replenish'].forEach(t => { if (data[t]) this.setData(t, data[t]); });
-    if (data.supplyList) this.setData('supply', data.supplyList);
     if (data.whitelist) this.setData('whitelist', data.whitelist);
     if (data.deliveryFirst) this.setDeliveryFirst(data.deliveryFirst);
     if (data.deliveryDiff) this.setData('delivery_diff', data.deliveryDiff);
@@ -2183,13 +2181,6 @@ const ExcelParser = {
 
   // 主解析入口
   async parse(file, fileType) {
-    // 供货清单：读取所有Sheet
-    if (fileType === 'supply') {
-      const raw = await this.parseAllSheets(file);
-      const mapped = this.mapSupply(raw.data);
-      return { headers: raw.headers, data: mapped, count: mapped.length };
-    }
-
     const wb = await this.readWorkbook(file);
 
     // 供应商追踪：特殊处理（多行表头，表头在第2行）
@@ -2725,35 +2716,21 @@ const ExcelParser = {
     });
   },
 
-  // --- 供货清单（多Sheet合并） ---
-  mapSupply(data) {
-    debugLog('[mapSupply] 输入' + data.length + '行');
-    if (data.length > 0) debugLog('[mapSupply] 字段: ' + Object.keys(data[0]).filter(k => !k.startsWith('_')).slice(0, 15).join(', '));
-    return data.map(obj => {
-      const get = (kws) => this.getField(obj, kws);
-      return {
-        ...obj,
-        channelSku: get(['渠道sku', 'sku']),
-        supplier: get(['供应商', '供应商名称']),
-        minOrder: get(['起订量']),
-        category: get(['品类']),
-        supplierStatus: get(['供应商状态']),
-        buyer: get(['采购负责人', '负责人', '采购员']),
-        backupDate: excelDateToText(get(['后补日期']), 8),
-      };
-    });
-  },
-
-  // --- 白名单 ---
+  // --- 白名单（整合原供货清单：按 SKU 维护供应商/品类/采购负责人/状态/交期/供货类型） ---
   mapWhitelist(data) {
+    debugLog('[mapWhitelist] 输入' + data.length + '行');
+    if (data.length > 0) debugLog('[mapWhitelist] 字段: ' + Object.keys(data[0]).filter(k => !k.startsWith('_')).slice(0, 15).join(', '));
     return data.map(obj => {
       const get = (kws) => this.getField(obj, kws);
       return {
         ...obj,
-        supplier: get(['供应商']),
-        category: get(['品类']),
+        channelSku: get(['渠道SKU', '渠道sku', 'sku']),
+        supplier: get(['供应商ID', '供应商']),
+        category: get(['供应类别', '品类', '品类名称']),
         buyer: get(['采购负责人', '负责人', '采购员']),
         supplierStatus: get(['供应商状态']),
+        leadTime: get(['供应商交期(天)', '供应商交期', '交期']),
+        supplyType: get(['供货类型（主供/备供）', '供货类型', '主供/备供']),
       };
     });
   },
@@ -2777,8 +2754,8 @@ const ExcelParser = {
 // 各上传类型在“追加模式”（取消勾选覆盖）下的去重主键：
 // 旧数据保留，新数据中主键相同的行覆盖旧行，主键不同的新行追加。
 const OVERWRITE_KEYFN = {
-  whitelist: (r) => [r.supplier, r.category, r.buyer].map(v => normalizeText(String(v || ''))).join('|'),
-  supply: (r) => normalizeText(String(r.channelSku || '')),
+  // 白名单：一个 SKU 可对应多个供应商（主供/备供/独供），按 SKU+供应商+供货类型 去重
+  whitelist: (r) => [r.channelSku, r.supplier, r.supplyType].map(v => normalizeText(String(v || ''))).join('|'),
   goods: (r) => normalizeText(String(r.channelSku || '')),
   // 取消/需补订单：按整行内容去重，避免同 SKU 多行被误合并成一行
   cancel: (r) => 'row:' + JSON.stringify(r),
@@ -4098,7 +4075,7 @@ const AdminUI = {
     const types = [
       { key: 'sales', label: '销量库存大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'delivery', label: '发货交付明细' },
       { key: 'supplier', label: '供应商追踪' }, { key: 'cancel', label: '供应商库存' },
-      { key: 'replenish', label: '需补订单' },       { key: 'supply', label: '供货清单' },
+      { key: 'replenish', label: '需补订单' },
       { key: 'goods', label: '货品表' },
       { key: 'whitelist', label: '白名单' },
     ];
@@ -4110,7 +4087,7 @@ const AdminUI = {
   },
 
   updateDataStatus() {
-    const total = ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'supply', 'goods', 'whitelist'].reduce((s, t) => s + Store.getData(t).length, 0);
+    const total = ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'goods', 'whitelist'].reduce((s, t) => s + Store.getData(t).length, 0);
     const lastUpd = Store.getLastUpdateText();
     const el = $('#admin-data-status');
     if (el) el.innerHTML = `共 <strong>${total}</strong> 条　|　<span style="color:var(--text-muted)">最后更新: ${lastUpd}</span>`;
@@ -4123,7 +4100,7 @@ const AdminUI = {
     const types = [
       { key: 'sales', label: '销量大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'delivery', label: '发货交付' },
       { key: 'supplier', label: '供应商追踪' }, { key: 'cancel', label: '供应商库存' },
-      { key: 'replenish', label: '需补订单' },       { key: 'supply', label: '供货清单' },
+      { key: 'replenish', label: '需补订单' },
       { key: 'goods', label: '货品表' },
       { key: 'whitelist', label: '白名单' },
     ];
@@ -4322,7 +4299,7 @@ const AdminUI = {
     this.renderHistory();
     this.updateDataStatus();
     this.renderUploadSummary();
-    ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'supply', 'whitelist'].forEach(t => {
+    ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist'].forEach(t => {
       const el = $('#status-' + t);
       if (el) { el.textContent = ''; el.className = 'upload-status'; }
     });
@@ -4860,7 +4837,7 @@ const PurchaseUI = {
     if (!container) return;
     const cn = normalizeText(cat);
     // 带版本缓存：supplier/delivery 未变时复用已匹配数据
-    const ver = Store._supplyVersion || 0;
+    const ver = Store._purchaseVersion || 0;
     if (!this._catData) this._catData = {};
     let data = this._catData[safeId];
     if (!data || data._v !== ver) {
@@ -5036,7 +5013,7 @@ const PurchaseUI = {
   },
 
   getMySupplierData() {
-    const ver = Store._supplyVersion || 0;
+    const ver = Store._purchaseVersion || 0;
     if (this._myDataCache && this._myDataVersion === ver) return this._myDataCache;
     const data = Store.getData('supplier');
     let filtered = data;
@@ -5071,7 +5048,7 @@ const PurchaseUI = {
 
   // 采购页主表 = 供应商追踪表（supplier）本身，即用户上传的跟踪表为准。
   // 不再以「9月发货明细底表(delivery)」为底表。仅把 取消/退货表(cancel)的供应商库存、
-  // 供货清单(supply)的供应商/状态、货品表(goods)的品类 按 SKU 兜底补齐。
+  // 白名单(whitelist)的供应商/状态、货品表(goods)的品类 按 SKU 兜底补齐。
   getDeliveryBasedData() {
     let supplierData = Store.getData('supplier') || [];
     if (supplierData.length === 0) return [];
@@ -5101,21 +5078,21 @@ const PurchaseUI = {
       }
       return cand[0] || null;
     };
-    // 供货清单索引（按 SKU）：用于「供应商 / 供应商状态」兜底——
-    // 跟踪表里没有这两列值时，用供货清单匹配；供货清单也没有就留空。
-    const supplyList = Store.getData('supply') || [];
-    const supplyBySku = {};
-    supplyList.forEach(r => {
+    // 白名单索引（按 SKU）：用于「供应商 / 供应商状态」兜底——
+    // 跟踪表里没有这两列值时，用白名单按 SKU 匹配；白名单也没有就留空。
+    const whitelist = Store.getData('whitelist') || [];
+    const whitelistBySku = {};
+    whitelist.forEach(r => {
       const sk = normalizeText(String(r.channelSku || ''));
-      if (sk && !supplyBySku[sk]) supplyBySku[sk] = r;
+      if (sk && !whitelistBySku[sk]) whitelistBySku[sk] = r;
     });
-    const fillSupplierFromSupply = (merged) => {
+    const fillSupplierFromWhitelist = (merged) => {
       if (merged.supplier && merged.supplierStatus) return merged; // 两项都有，无需兜底
       const sk = normalizeText(String(merged.channelSku || ''));
-      const sr = sk ? supplyBySku[sk] : null;
-      if (sr) {
-        if (!merged.supplier) merged.supplier = sr.supplier || '';
-        if (!merged.supplierStatus) merged.supplierStatus = sr.supplierStatus || '';
+      const wr = sk ? whitelistBySku[sk] : null;
+      if (wr) {
+        if (!merged.supplier) merged.supplier = wr.supplier || '';
+        if (!merged.supplierStatus) merged.supplierStatus = wr.supplierStatus || '';
       }
       return merged;
     };
@@ -5161,7 +5138,7 @@ const PurchaseUI = {
     let rows = supplierData.map(sRow => {
       const merged = Object.assign({}, sRow);
       attachCancelStock(merged);
-      fillSupplierFromSupply(merged);
+      fillSupplierFromWhitelist(merged);
       fillCategoryFromGoods(merged);
       if (!merged.displayName) merged.displayName = sRow.displayName || sRow['ns名称'] || sRow['NS名称'] || sRow.category || rowCategoryOf(sRow) || '';
       return merged;
@@ -5244,7 +5221,7 @@ const PurchaseUI = {
   // 交付指标已匹配、带差异标记的“富数据”。仅在 delivery / supplier 真正变更时才重算，
   // 按键筛选 / 翻页 / 自动刷新（数据未变）直接复用缓存，避免反复全量重算导致卡顿。
   getMyRichData() {
-    const ver = Store._supplyVersion || 0;
+    const ver = Store._purchaseVersion || 0;
     if (this._richCache && this._richVersion === ver) return this._richCache;
     const base = this.getDeliveryBasedData();
     const rich = base.map(r => {
@@ -6755,11 +6732,10 @@ const OperationUI = {
   showBuyerDetails(channelSku, buyerName) {
     if (!channelSku && !buyerName) return;
     const supplierData = Store.getData('supplier');
-    const supplyList = Store.getData('supply');
     const whitelist = Store.getData('whitelist');
     const skuNorm = normalizeText(channelSku);
     const supplierRows = supplierData.filter(r => normalizeText(r.channelSku) === skuNorm);
-    const supplyRows = supplyList.filter(r => normalizeText(r.channelSku) === skuNorm);
+    const whitelistRows = whitelist.filter(r => normalizeText(r.channelSku) === skuNorm);
 
     let body = `<p style="margin-bottom:12px;color:var(--text-muted)">SKU: <strong>${escapeHtml(channelSku)}</strong>`;
     if (buyerName) body += ` | 采购负责人: <strong>${escapeHtml(buyerName)}</strong>`;
@@ -6774,28 +6750,14 @@ const OperationUI = {
       body += '</tbody></table></div>';
     } else { body += '<p style="color:var(--text-muted)">暂无数据</p>'; }
 
-    body += '<h4 style="margin-top:20px">供货清单</h4>';
-    if (supplyRows.length > 0) {
-      body += '<div class="table-scroll"><table class="data-table"><thead><tr><th>SKU</th><th>供应商</th><th>起订量</th><th>品类</th><th>状态</th><th>采购负责人</th><th>后补日期</th></tr></thead><tbody>';
-      supplyRows.forEach(r => {
-        body += `<tr><td>${escapeHtml(r.channelSku)}</td><td>${escapeHtml(r.supplier)}</td><td>${escapeHtml(r.minOrder || '')}</td><td>${escapeHtml(r.category || '')}</td><td>${escapeHtml(r.supplierStatus || '')}</td><td>${escapeHtml(r.buyer)}</td><td>${escapeHtml(r.backupDate || '')}</td></tr>`;
+    body += '<h4 style="margin-top:20px">白名单</h4>';
+    if (whitelistRows.length > 0) {
+      body += '<div class="table-scroll"><table class="data-table"><thead><tr><th>渠道SKU</th><th>供应商ID</th><th>供应类别</th><th>采购负责人</th><th>供应商状态</th><th>供应商交期(天)</th><th>供货类型（主供/备供）</th></tr></thead><tbody>';
+      whitelistRows.forEach(r => {
+        body += `<tr><td>${escapeHtml(r.channelSku || '')}</td><td>${escapeHtml(r.supplier || '')}</td><td>${escapeHtml(r.category || '')}</td><td>${escapeHtml(r.buyer || '')}</td><td>${escapeHtml(r.supplierStatus || '')}</td><td>${escapeHtml(r.leadTime || '')}</td><td>${escapeHtml(r.supplyType || '')}</td></tr>`;
       });
       body += '</tbody></table></div>';
     } else { body += '<p style="color:var(--text-muted)">暂无数据</p>'; }
-
-    // 白名单信息
-    const wlSuppliers = [...new Set([...supplierRows.map(r => r.supplier), ...supplyRows.map(r => r.supplier)].filter(Boolean))];
-    if (whitelist.length > 0 && wlSuppliers.length > 0) {
-      const wlRows = whitelist.filter(w => wlSuppliers.some(s => normalizeText(s) === normalizeText(w.supplier)));
-      if (wlRows.length > 0) {
-        body += '<h4 style="margin-top:20px">白名单</h4>';
-        body += '<div class="table-scroll"><table class="data-table"><thead><tr><th>供应商</th><th>品类</th><th>采购负责人</th><th>供应商状态</th></tr></thead><tbody>';
-        wlRows.forEach(r => {
-          body += `<tr><td>${escapeHtml(r.supplier)}</td><td>${escapeHtml(r.category || '')}</td><td>${escapeHtml(r.buyer)}</td><td>${escapeHtml(r.supplierStatus || '')}</td></tr>`;
-        });
-        body += '</tbody></table></div>';
-      }
-    }
 
     Modal.show('SKU: ' + channelSku + ' 的工厂/采购员明细', body);
   }
