@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260911v259';
+const APP_CODE_VERSION = '20260911v260';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -3274,8 +3274,8 @@ const Merger = {
 const COLS = {
   // 运营视图列（含优先级、供应商库存、催更按钮）
   operation: [
-    { f: 'isFba', l: '是否FBA', filter: 'multi', filterKey: 'op-is-fba', filterField: 'isFba' },
-    { f: 'isCombo', l: '是否组合', filter: 'multi', filterKey: 'op-is-combo', filterField: 'isCombo' },
+    { f: 'channel', l: '渠道', filter: 'multi', filterKey: 'channel', filterField: 'channel' },
+    { f: 'channelSku', l: '渠道SKU' },
     { f: 'displayName', l: '显示名称', filter: 'multi', filterKey: 'name', filterField: 'displayName' },
     { f: 'salesStatus', l: '销售状态', filter: 'multi', filterKey: 'status', filterField: 'salesStatus' },
     { f: 'priority', l: '优先级', filter: 'multi', filterKey: 'priority', filterField: 'priority' },
@@ -3309,8 +3309,8 @@ const COLS = {
 
   // 计划视图列（含优先级、供应商库存、催更按钮）
   plan: [
-    { f: 'isFba', l: '是否FBA', filter: 'multi', filterKey: 'plan-is-fba', filterField: 'isFba' },
-    { f: 'isCombo', l: '是否组合', filter: 'multi', filterKey: 'plan-is-combo', filterField: 'isCombo' },
+    { f: 'channel', l: '渠道', filter: 'multi', filterKey: 'channel', filterField: 'channel' },
+    { f: 'channelSku', l: '渠道SKU' },
     { f: 'displayName', l: '显示名称', filter: 'multi', filterKey: 'name', filterField: 'displayName' },
     { f: 'salesStatus', l: '销售状态', filter: 'multi', filterKey: 'status', filterField: 'salesStatus' },
     { f: 'priority', l: '优先级', filter: 'multi', filterKey: 'priority', filterField: 'priority' },
@@ -6910,8 +6910,6 @@ const PLAN_MULTI_FILTERS = [
   { col: 'country', prop: 'countryFilter', field: 'country', label: '目的国家' },
   { col: 'plan-manager', prop: 'planManagerFilter', field: 'planManager', label: '计划负责人' },
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
-  { col: 'plan-is-fba', prop: 'planIsFbaFilter', field: 'isFba', label: '是否FBA' },
-  { col: 'plan-is-combo', prop: 'planIsComboFilter', field: 'isCombo', label: '是否组合' },
   { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期(T-2)' },
   { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期(T-2)' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
@@ -6926,8 +6924,6 @@ const OP_MULTI_FILTERS = [
   { col: 'country', prop: 'countryFilter', field: 'country', label: '目的国家' },
   { col: 'op-manager', prop: 'opManagerFilter', field: 'opManager', label: '运营负责人' },
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
-  { col: 'op-is-fba', prop: 'opIsFbaFilter', field: 'isFba', label: '是否FBA' },
-  { col: 'op-is-combo', prop: 'opIsComboFilter', field: 'isCombo', label: '是否组合' },
   { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期(T-2)' },
   { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期(T-2)' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
