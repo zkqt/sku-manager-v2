@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260910v258';
+const APP_CODE_VERSION = '20260911v259';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -685,6 +685,7 @@ function getPageData(data, page) {
 // 销量库存大表（sales）已改为云端同步+增量更新：管理员统一上传后按渠道/SKU/FBA/组合/PO/国家合并，运营/计划/采购自动拉取。
 const SYNC_TYPES = [
   { key: 'sales', label: '销量库存大表（云端同步·增量更新）' },
+  { key: 'ops_detail', label: '运营看板明细（云端同步·增量更新）' },
   { key: 'delivery', label: '发货明细（可云端同步）', defaultOff: true },
   { key: 'supplier', label: '供应商追踪' },
   { key: 'cancel', label: '取消/退货' },
@@ -1417,7 +1418,7 @@ const Sync = {
     if (isAdmin) {
       ok = await this.pull((label, pct) => updateGlobalLoading(label, pct), { silent });
     } else {
-      const critical = ['personnel', 'nags', 'sales', 'supplier', 'cancel', 'replenish'];
+      const critical = ['personnel', 'nags', 'sales', 'ops_detail', 'supplier', 'cancel', 'replenish'];
       ok = await this.pull((label, pct) => updateGlobalLoading(label, pct), { silent, only: critical });
     }
     hideGlobalLoading();
@@ -1429,7 +1430,7 @@ const Sync = {
       showToast('✓ 已从云端加载数据', 'success');
       // 后台补齐其余非关键表，不阻塞首屏；auto-refresh 后续也会持续校准
       if (!isAdmin) {
-        const rest = SYNC_TYPES.filter(t => !t.localOnly && !t.hidden && !['personnel','nags','sales','supplier','cancel','replenish'].includes(t.key)).map(t => t.key);
+        const rest = SYNC_TYPES.filter(t => !t.localOnly && !t.hidden && !['personnel','nags','sales','ops_detail','supplier','cancel','replenish'].includes(t.key)).map(t => t.key);
         if (rest.length) this.pull({ silent: true, only: rest }).catch(e => debugLog('[Sync] 后台补齐其余表失败(忽略): ' + (e && e.message)));
       }
     }
@@ -2282,6 +2283,7 @@ const ExcelParser = {
     let mapped;
     switch (fileType) {
       case 'sales': mapped = this.mapSales(bestResult.data); break;
+      case 'ops_detail': mapped = this.mapOpsDetail(bestResult.data); break;
       case 'delivery': mapped = this.mapDelivery(bestResult.data); break;
       case 'goods': mapped = this.mapGoods(bestResult.data); break;
       default: mapped = bestResult.data; break;
@@ -2466,6 +2468,28 @@ const ExcelParser = {
         catL2: get(['二级类目', '二级品类']),
         isNewProduct: get(['新品', '是否新品', '新品标记']),
       });
+    });
+  },
+
+  // --- 运营看板明细（库存/到货/断货）---
+  mapOpsDetail(data) {
+    if (data.length > 0) {
+      console.log('[mapOpsDetail] sample keys:', Object.keys(data[0]).filter(k => !k.startsWith('_')).slice(0, 25));
+    }
+    return data.map(obj => {
+      const get = (kws) => this.getField(obj, kws);
+      return {
+        channel: get(['渠道']),
+        channelSku: get(['渠道sku', '渠道SKU', 'sku']),
+        isFba: get(['是否fba']),
+        isCombo: get(['是否组合']),
+        isPo: get(['是否po', '是否po产品', 'po产品']),
+        country: get(['国家']),
+        stockoutDate: get(['预计断货日期']),
+        nextBatchDate: get(['最近批次预计到货日期']),
+        nextBatchQty: get(['最近批次数量']),
+        stockHealthStatus: get(['库存健康状态']),
+      };
     });
   },
 
@@ -2787,6 +2811,41 @@ function projectSalesSlim(rows) {
     return o;
   });
 }
+
+// ===== 运营看板明细（库存/到货/断货）增量合并 =====
+// 该表每天由运营同学更新，只含 6 个身份字段 + 4 个变动字段，按与 sales 同样的 key 增量合并，
+// 合并后挂到 Merger 结果行供运营/计划看板展示。
+const OPS_DETAIL_KEY_FIELDS = ['channel', 'channelSku', 'isFba', 'isCombo', 'isPo', 'country'];
+const OPS_DETAIL_DATA_FIELDS = ['stockoutDate', 'nextBatchDate', 'nextBatchQty', 'stockHealthStatus'];
+const OPS_DETAIL_SLIM_FIELDS = [...OPS_DETAIL_KEY_FIELDS, ...OPS_DETAIL_DATA_FIELDS];
+function opsDetailKey(r) {
+  return [r.channel, r.channelSku, r.isFba, r.isCombo, r.isPo, r.country]
+    .map(v => normalizeText(String(v || ''))).join('|');
+}
+function mergeOpsDetailIncremental(oldArr, newArr) {
+  const map = new Map();
+  (oldArr || []).forEach(r => map.set(opsDetailKey(r), Object.assign({}, r)));
+  (newArr || []).forEach(r => {
+    const k = opsDetailKey(r);
+    const existing = map.get(k);
+    if (existing) {
+      const merged = Object.assign({}, existing);
+      OPS_DETAIL_DATA_FIELDS.forEach(f => { if (r[f] !== undefined && r[f] !== '') merged[f] = r[f]; });
+      map.set(k, merged);
+    } else {
+      map.set(k, Object.assign({}, r));
+    }
+  });
+  return [...map.values()];
+}
+function projectOpsDetailSlim(rows) {
+  return (rows || []).map(r => {
+    const o = {};
+    OPS_DETAIL_SLIM_FIELDS.forEach(f => { if (r[f] !== undefined) o[f] = r[f]; });
+    return o;
+  });
+}
+
 // 增量合并：已有行按 dataFields 覆盖更新（新上传值为准），新键行直接追加；旧数据里新表没有的行保留。
 function mergeSalesIncremental(oldArr, newArr) {
   const keyFields = ['channel', 'channelSku', 'isFba', 'isCombo', 'isPo', 'country'];
@@ -3048,6 +3107,11 @@ const Merger = {
     const delivery = Store.getData('delivery');
     const supplier = Store.getData('supplier');
     const cancel = Store.getData('cancel');
+    const opsDetail = Store.getData('ops_detail');
+
+    // 构建运营看板明细索引（按 渠道+SKU+FBA+组合+PO+国家 精确匹配）
+    const opsDetailMap = {};
+    (opsDetail || []).forEach(o => { opsDetailMap[opsDetailKey(o)] = o; });
 
     // 构建发货交付索引 - 双重索引：joinKey和skuKey
     const deliveryJoinMap = {};
@@ -3090,6 +3154,7 @@ const Merger = {
     const result = sales.map(s => {
       const k = this.joinKey(s);
       const sk = this.skuKey(s);
+      const ops = opsDetailMap[opsDetailKey(s)] || {};
 
       // 优先用joinKey匹配delivery，否则用skuKey
       let dRows = deliveryJoinMap[k] || [];
@@ -3146,12 +3211,18 @@ const Merger = {
         octDeliverable: numAgg('octDeliverable'),
         octDeliveryDate: firstAgg('octDeliveryDate'),
         octRemark: txtAgg('octRemark'),
+        // 运营看板明细（T-2）：按 渠道+SKU+FBA+组合+PO+国家 精确匹配
+        stockoutDate: ops.stockoutDate || '',
+        nextBatchDate: ops.nextBatchDate || '',
+        nextBatchQty: ops.nextBatchQty || '',
+        stockHealthStatus: ops.stockHealthStatus || '',
         _supplierRows: sRows,
       };
     });
 
+    const opsMatched = result.filter(r => r.stockoutDate || r.nextBatchDate || r.nextBatchQty || r.stockHealthStatus).length;
     debugLog('[Merger] 合并: ' + result.length + '条销售, ' + dJoinMatched + '条发货(join匹配), ' +
-      dSkuMatched + '条发货(sku匹配), 供应商' + supplier.length + '条, 取消' + cancel.length + '条');
+      dSkuMatched + '条发货(sku匹配), 供应商' + supplier.length + '条, 取消' + cancel.length + '条, 运营明细匹配' + opsMatched + '条');
     if (delivery.length > 0) {
       debugLog('[Merger] delivery前5个joinKey: ' + JSON.stringify(delivery.slice(0, 5).map(d => this.joinKey(d))));
       debugLog('[Merger] sales前5个joinKey: ' + JSON.stringify(sales.slice(0, 5).map(s => this.joinKey(s))));
@@ -3203,8 +3274,6 @@ const Merger = {
 const COLS = {
   // 运营视图列（含优先级、供应商库存、催更按钮）
   operation: [
-    { f: 'channel', l: '渠道', filter: 'multi', filterKey: 'channel', filterField: 'channel' },
-    { f: 'channelSku', l: '渠道SKU' },
     { f: 'isFba', l: '是否FBA', filter: 'multi', filterKey: 'op-is-fba', filterField: 'isFba' },
     { f: 'isCombo', l: '是否组合', filter: 'multi', filterKey: 'op-is-combo', filterField: 'isCombo' },
     { f: 'displayName', l: '显示名称', filter: 'multi', filterKey: 'name', filterField: 'displayName' },
@@ -3219,6 +3288,9 @@ const COLS = {
     { f: 'domesticStock', l: '国内实仓' },
     { f: 'domesticOrder', l: '国内订单' },
     { f: 'cancelSupplierStock', l: '供应商库存' },
+    { f: 'stockoutDate', l: '预计断货日期(T-2)', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
+    { f: 'nextBatchDate', l: '最近批次预计到货日期(T-2)', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
+    { f: 'nextBatchQty', l: '最近批次数量(T-2)', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
     { f: 'augSpotBox', l: '9月现货箱单' },
     { f: 'availableDays', l: '可售天数' },
     { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
@@ -3232,12 +3304,11 @@ const COLS = {
     { f: 'sepDeliverable', l: '9月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
     { f: 'sepDeliveryDate', l: '9月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
     { f: 'sepRemark', l: '9月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
+    { f: 'stockHealthStatus', l: '库存健康状态(T-2)', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
   ],
 
   // 计划视图列（含优先级、供应商库存、催更按钮）
   plan: [
-    { f: 'channel', l: '渠道', filter: 'multi', filterKey: 'channel', filterField: 'channel' },
-    { f: 'channelSku', l: '渠道SKU' },
     { f: 'isFba', l: '是否FBA', filter: 'multi', filterKey: 'plan-is-fba', filterField: 'isFba' },
     { f: 'isCombo', l: '是否组合', filter: 'multi', filterKey: 'plan-is-combo', filterField: 'isCombo' },
     { f: 'displayName', l: '显示名称', filter: 'multi', filterKey: 'name', filterField: 'displayName' },
@@ -3252,6 +3323,9 @@ const COLS = {
     { f: 'domesticStock', l: '国内实仓' },
     { f: 'domesticOrder', l: '国内订单' },
     { f: 'cancelSupplierStock', l: '供应商库存' },
+    { f: 'stockoutDate', l: '预计断货日期(T-2)', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
+    { f: 'nextBatchDate', l: '最近批次预计到货日期(T-2)', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
+    { f: 'nextBatchQty', l: '最近批次数量(T-2)', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
     { f: 'augSpotBox', l: '9月现货箱单' },
     { f: 'availableDays', l: '可售天数' },
     { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
@@ -3265,6 +3339,7 @@ const COLS = {
     { f: 'sepDeliverable', l: '9月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
     { f: 'sepDeliveryDate', l: '9月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
     { f: 'sepRemark', l: '9月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
+    { f: 'stockHealthStatus', l: '库存健康状态(T-2)', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
   ],
 
   // 可展开的隐藏字段
@@ -3787,6 +3862,12 @@ const AdminUI = {
           debugLog('[handleUpload] sales 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
           syncPromises.push(Store.setData('sales', merged));
         }
+      } else if (fileType === 'ops_detail') {
+        // 运营看板明细：按 渠道+SKU+FBA+组合+PO+国家 增量合并，只更新 4 个库存/到货字段
+        const old = Store.getData('ops_detail');
+        const merged = mergeOpsDetailIncremental(projectOpsDetailSlim(old), projectOpsDetailSlim(result.data));
+        debugLog('[handleUpload] ops_detail 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
+        syncPromises.push(Store.setData('ops_detail', merged));
       } else if (overwrite && fileType !== 'supplier') {
         syncPromises.push(Store.setData(fileType, result.data));
       } else {
@@ -4015,7 +4096,7 @@ const AdminUI = {
 
   renderUploadSummary() {
     const types = [
-      { key: 'sales', label: '销量库存大表' }, { key: 'delivery', label: '发货交付明细' },
+      { key: 'sales', label: '销量库存大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'delivery', label: '发货交付明细' },
       { key: 'supplier', label: '供应商追踪' }, { key: 'cancel', label: '供应商库存' },
       { key: 'replenish', label: '需补订单' },       { key: 'supply', label: '供货清单' },
       { key: 'goods', label: '货品表' },
@@ -4029,7 +4110,7 @@ const AdminUI = {
   },
 
   updateDataStatus() {
-    const total = ['sales', 'delivery', 'supplier', 'cancel', 'replenish', 'supply', 'goods', 'whitelist'].reduce((s, t) => s + Store.getData(t).length, 0);
+    const total = ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'supply', 'goods', 'whitelist'].reduce((s, t) => s + Store.getData(t).length, 0);
     const lastUpd = Store.getLastUpdateText();
     const el = $('#admin-data-status');
     if (el) el.innerHTML = `共 <strong>${total}</strong> 条　|　<span style="color:var(--text-muted)">最后更新: ${lastUpd}</span>`;
@@ -4040,7 +4121,7 @@ const AdminUI = {
   renderUpdateTimes() {
     const u = Store.getUpdateTimes();
     const types = [
-      { key: 'sales', label: '销量大表' }, { key: 'delivery', label: '发货交付' },
+      { key: 'sales', label: '销量大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'delivery', label: '发货交付' },
       { key: 'supplier', label: '供应商追踪' }, { key: 'cancel', label: '供应商库存' },
       { key: 'replenish', label: '需补订单' },       { key: 'supply', label: '供货清单' },
       { key: 'goods', label: '货品表' },
@@ -4241,7 +4322,7 @@ const AdminUI = {
     this.renderHistory();
     this.updateDataStatus();
     this.renderUploadSummary();
-    ['sales', 'delivery', 'supplier', 'cancel', 'replenish', 'supply', 'whitelist'].forEach(t => {
+    ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'supply', 'whitelist'].forEach(t => {
       const el = $('#status-' + t);
       if (el) { el.textContent = ''; el.className = 'upload-status'; }
     });
@@ -6316,7 +6397,7 @@ const PlanUI = {
     this.currentPage = 0;
     // 切换账号时重置数值筛选和多选表头筛选，避免继承上一个账号的筛选状态
     this.augTargetFilter = null; this.deliveryQtyFilter = null; this.remainingDeliveryFilter = null;
-    this.sepOnShelfFilter = null; this.sepDeliverableFilter = null;
+    this.sepOnShelfFilter = null; this.sepDeliverableFilter = null; this.nextBatchQtyFilter = null;
     PLAN_MULTI_FILTERS.forEach(d => this[d.prop] = new Set());
     const badge = this.isAdmin ? ` <span class="admin-badge">管理员</span>` : '';
     $('#plan-username').innerHTML = escapeHtml(userName) + badge;
@@ -6518,7 +6599,7 @@ const OperationUI = {
     this.currentPage = 0;
     // 切换账号时重置数值筛选和多选表头筛选，避免继承上一个账号的筛选状态
     this.augTargetFilter = null; this.deliveryQtyFilter = null; this.remainingDeliveryFilter = null;
-    this.sepOnShelfFilter = null; this.sepDeliverableFilter = null;
+    this.sepOnShelfFilter = null; this.sepDeliverableFilter = null; this.nextBatchQtyFilter = null;
     OP_MULTI_FILTERS.forEach(d => this[d.prop] = new Set());
     const badge = this.isAdmin ? ` <span class="admin-badge">管理员</span>` : '';
     $('#op-username').innerHTML = escapeHtml(userName) + badge;
@@ -6727,6 +6808,7 @@ const PLAN_OP_NUM_FILTERS = [
   { prop: 'remainingDeliveryFilter', col: 'remaining-delivery', field: 'remainingDelivery', label: '剩余交付' },
   { prop: 'sepOnShelfFilter', col: 'sep-on-shelf', field: 'sepOnShelf', label: '9月预计上架' },
   { prop: 'sepDeliverableFilter', col: 'sep-deliverable', field: 'sepDeliverable', label: '9月可交数量' },
+  { prop: 'nextBatchQtyFilter', col: 'next-batch-qty', field: 'nextBatchQty', label: '最近批次数量(T-2)' },
 ];
 Object.assign(PlanUI, numericFilterMixin('plan', PLAN_OP_NUM_FILTERS, 'renderOverview'));
 Object.assign(OperationUI, numericFilterMixin('op', PLAN_OP_NUM_FILTERS, 'renderTable'));
@@ -6830,8 +6912,11 @@ const PLAN_MULTI_FILTERS = [
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
   { col: 'plan-is-fba', prop: 'planIsFbaFilter', field: 'isFba', label: '是否FBA' },
   { col: 'plan-is-combo', prop: 'planIsComboFilter', field: 'isCombo', label: '是否组合' },
+  { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期(T-2)' },
+  { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期(T-2)' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
   { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '9月采购备注' },
+  { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态(T-2)' },
 ];
 const OP_MULTI_FILTERS = [
   { col: 'status', prop: 'statusFilter', field: 'salesStatus', label: '销售状态' },
@@ -6843,8 +6928,11 @@ const OP_MULTI_FILTERS = [
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
   { col: 'op-is-fba', prop: 'opIsFbaFilter', field: 'isFba', label: '是否FBA' },
   { col: 'op-is-combo', prop: 'opIsComboFilter', field: 'isCombo', label: '是否组合' },
+  { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期(T-2)' },
+  { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期(T-2)' },
   { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
   { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '9月采购备注' },
+  { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态(T-2)' },
 ];
 Object.assign(PlanUI, headerMultiSelectMixin('plan', PLAN_MULTI_FILTERS, 'renderOverview', 'planManager'));
 Object.assign(OperationUI, headerMultiSelectMixin('op', OP_MULTI_FILTERS, 'renderTable', 'opManager'));
