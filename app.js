@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260911v263';
+const APP_CODE_VERSION = '20260915v264';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -1870,7 +1870,7 @@ const Store = {
 
   clearAll() {
     this._memCache.clear();
-    ['sales', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist', 'delivery_first', 'delivery_diff'].forEach(t => {
+    ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist', 'delivery_first', 'delivery_diff'].forEach(t => {
       localStorage.removeItem(this._key('data_' + t));
     });
     localStorage.removeItem(this._key('personnel'));
@@ -1887,6 +1887,7 @@ const Store = {
       sales: this.getData('sales'), delivery: this.getData('delivery'),
       supplier: this.getData('supplier'), cancel: this.getData('cancel'),
       replenish: this.getData('replenish'),
+      ops_detail: this.getData('ops_detail'),
       whitelist: this.getData('whitelist'), deliveryFirst: this.getDeliveryFirst(),
       deliveryDiff: this.getData('delivery_diff'),
       personnel: this.getPersonnel(), history: this.getHistory(),
@@ -1902,6 +1903,7 @@ const Store = {
   importAll(data) {
     if (!data) return false;
     ['sales', 'delivery', 'supplier', 'cancel', 'replenish'].forEach(t => { if (data[t]) this.setData(t, data[t]); });
+    if (data.ops_detail) this.setData('ops_detail', data.ops_detail);
     if (data.whitelist) this.setData('whitelist', data.whitelist);
     if (data.deliveryFirst) this.setDeliveryFirst(data.deliveryFirst);
     if (data.deliveryDiff) this.setData('delivery_diff', data.deliveryDiff);
@@ -4348,9 +4350,14 @@ const AdminUI = {
   },
 
   exportData() {
-    Store.exportAll();
-    Store.addHistory({ user: '管理员', role: 'admin', action: '导出数据', detail: '全量导出' });
-    showToast('数据已导出');
+    try {
+      Store.exportAll();
+      Store.addHistory({ user: '管理员', role: 'admin', action: '导出数据', detail: '全量导出' });
+      showToast('数据已导出');
+    } catch (e) {
+      console.error('[exportData] 导出失败:', e);
+      showToast('导出失败: ' + (e.message || '未知错误'));
+    }
   },
 
   async importData(file) {
