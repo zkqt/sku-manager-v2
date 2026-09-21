@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260915v264';
+const APP_CODE_VERSION = '20260921v265';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -686,6 +686,7 @@ function getPageData(data, page) {
 const SYNC_TYPES = [
   { key: 'sales', label: '销量库存大表（云端同步·增量更新）' },
   { key: 'ops_detail', label: '运营看板明细（云端同步·增量更新）' },
+  { key: 'est_sales', label: '预估销量（云端同步·增量更新）' },
   { key: 'delivery', label: '发货明细（可云端同步）', defaultOff: true },
   { key: 'supplier', label: '供应商追踪' },
   { key: 'cancel', label: '取消/退货' },
@@ -1417,7 +1418,7 @@ const Sync = {
     if (isAdmin) {
       ok = await this.pull((label, pct) => updateGlobalLoading(label, pct), { silent });
     } else {
-      const critical = ['personnel', 'nags', 'sales', 'ops_detail', 'supplier', 'cancel', 'replenish'];
+      const critical = ['personnel', 'nags', 'sales', 'ops_detail', 'est_sales', 'supplier', 'cancel', 'replenish'];
       ok = await this.pull((label, pct) => updateGlobalLoading(label, pct), { silent, only: critical });
     }
     hideGlobalLoading();
@@ -1429,7 +1430,7 @@ const Sync = {
       showToast('✓ 已从云端加载数据', 'success');
       // 后台补齐其余非关键表，不阻塞首屏；auto-refresh 后续也会持续校准
       if (!isAdmin) {
-        const rest = SYNC_TYPES.filter(t => !t.localOnly && !t.hidden && !['personnel','nags','sales','ops_detail','supplier','cancel','replenish'].includes(t.key)).map(t => t.key);
+        const rest = SYNC_TYPES.filter(t => !t.localOnly && !t.hidden && !['personnel','nags','sales','ops_detail','est_sales','supplier','cancel','replenish'].includes(t.key)).map(t => t.key);
         if (rest.length) this.pull({ silent: true, only: rest }).catch(e => debugLog('[Sync] 后台补齐其余表失败(忽略): ' + (e && e.message)));
       }
     }
@@ -1870,7 +1871,7 @@ const Store = {
 
   clearAll() {
     this._memCache.clear();
-    ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist', 'delivery_first', 'delivery_diff'].forEach(t => {
+    ['sales', 'ops_detail', 'est_sales', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist', 'delivery_first', 'delivery_diff'].forEach(t => {
       localStorage.removeItem(this._key('data_' + t));
     });
     localStorage.removeItem(this._key('personnel'));
@@ -1888,6 +1889,7 @@ const Store = {
       supplier: this.getData('supplier'), cancel: this.getData('cancel'),
       replenish: this.getData('replenish'),
       ops_detail: this.getData('ops_detail'),
+      est_sales: this.getData('est_sales'),
       whitelist: this.getData('whitelist'), deliveryFirst: this.getDeliveryFirst(),
       deliveryDiff: this.getData('delivery_diff'),
       personnel: this.getPersonnel(), history: this.getHistory(),
@@ -1904,6 +1906,7 @@ const Store = {
     if (!data) return false;
     ['sales', 'delivery', 'supplier', 'cancel', 'replenish'].forEach(t => { if (data[t]) this.setData(t, data[t]); });
     if (data.ops_detail) this.setData('ops_detail', data.ops_detail);
+    if (data.est_sales) this.setData('est_sales', data.est_sales);
     if (data.whitelist) this.setData('whitelist', data.whitelist);
     if (data.deliveryFirst) this.setDeliveryFirst(data.deliveryFirst);
     if (data.deliveryDiff) this.setData('delivery_diff', data.deliveryDiff);
@@ -2277,6 +2280,7 @@ const ExcelParser = {
     switch (fileType) {
       case 'sales': mapped = this.mapSales(bestResult.data); break;
       case 'ops_detail': mapped = this.mapOpsDetail(bestResult.data); break;
+      case 'est_sales': mapped = this.mapEstSales(bestResult.data); break;
       case 'delivery': mapped = this.mapDelivery(bestResult.data); break;
       case 'goods': mapped = this.mapGoods(bestResult.data); break;
       default: mapped = bestResult.data; break;
@@ -2482,6 +2486,24 @@ const ExcelParser = {
         nextBatchDate: get(['最近批次预计到货日期']),
         nextBatchQty: get(['最近批次数量']),
         stockHealthStatus: get(['库存健康状态']),
+      };
+    });
+  },
+
+  // --- 预估销量表（周度监控明细表）---
+  mapEstSales(data) {
+    if (data.length > 0) {
+      console.log('[mapEstSales] sample keys:', Object.keys(data[0]).filter(k => !k.startsWith('_')).slice(0, 25));
+    }
+    return data.map(obj => {
+      const get = (kws) => this.getField(obj, kws);
+      return {
+        channel: get(['渠道']),
+        channelSku: get(['渠道sku', '渠道SKU', 'sku']),
+        isFba: get(['是否fba']),
+        isCombo: get(['是否组合']),
+        country: get(['国家']),
+        sepEstSales: get(['2026-9预估销量', '2026-9 预估销量', '9月预估销量']),
       };
     });
   },
@@ -2825,6 +2847,40 @@ function projectOpsDetailSlim(rows) {
   });
 }
 
+// ===== 预估销量表（周度监控明细表）增量合并 =====
+// 管理员上传「周度监控明细表」，只保留 5 个身份字段（渠道/渠道SKU/FBA/组合/国家，无PO）
+// + 1 个数据字段（sepEstSales=2026-9预估销量），按键增量合并后投影到运营/计划主表「9月预估销量」列。
+const EST_SALES_KEY_FIELDS = ['channel', 'channelSku', 'isFba', 'isCombo', 'country'];
+const EST_SALES_DATA_FIELDS = ['sepEstSales'];
+const EST_SALES_SLIM_FIELDS = [...EST_SALES_KEY_FIELDS, ...EST_SALES_DATA_FIELDS];
+function estSalesKey(r) {
+  return [r.channel, r.channelSku, r.isFba, r.isCombo, r.country]
+    .map(v => normalizeText(String(v || ''))).join('|');
+}
+function mergeEstSalesIncremental(oldArr, newArr) {
+  const map = new Map();
+  (oldArr || []).forEach(r => map.set(estSalesKey(r), Object.assign({}, r)));
+  (newArr || []).forEach(r => {
+    const k = estSalesKey(r);
+    const existing = map.get(k);
+    if (existing) {
+      const merged = Object.assign({}, existing);
+      EST_SALES_DATA_FIELDS.forEach(f => { if (r[f] !== undefined && r[f] !== '') merged[f] = r[f]; });
+      map.set(k, merged);
+    } else {
+      map.set(k, Object.assign({}, r));
+    }
+  });
+  return [...map.values()];
+}
+function projectEstSalesSlim(rows) {
+  return (rows || []).map(r => {
+    const o = {};
+    EST_SALES_SLIM_FIELDS.forEach(f => { if (r[f] !== undefined) o[f] = r[f]; });
+    return o;
+  });
+}
+
 // 增量合并：已有行按 dataFields 覆盖更新（新上传值为准），新键行直接追加；旧数据里新表没有的行保留。
 function mergeSalesIncremental(oldArr, newArr) {
   const keyFields = ['channel', 'channelSku', 'isFba', 'isCombo', 'isPo', 'country'];
@@ -3087,10 +3143,15 @@ const Merger = {
     const supplier = Store.getData('supplier');
     const cancel = Store.getData('cancel');
     const opsDetail = Store.getData('ops_detail');
+    const estSales = Store.getData('est_sales');
 
     // 构建运营看板明细索引（按 渠道+SKU+FBA+组合+PO+国家 精确匹配）
     const opsDetailMap = {};
     (opsDetail || []).forEach(o => { opsDetailMap[opsDetailKey(o)] = o; });
+
+    // 构建预估销量索引（按 渠道+SKU+FBA+组合+国家 精确匹配，无PO维度）
+    const estSalesMap = {};
+    (estSales || []).forEach(e => { estSalesMap[estSalesKey(e)] = e; });
 
     // 构建发货交付索引 - 双重索引：joinKey和skuKey
     const deliveryJoinMap = {};
@@ -3134,6 +3195,7 @@ const Merger = {
       const k = this.joinKey(s);
       const sk = this.skuKey(s);
       const ops = opsDetailMap[opsDetailKey(s)] || {};
+      const est = estSalesMap[estSalesKey(s)] || {};
 
       // 优先用joinKey匹配delivery，否则用skuKey
       let dRows = deliveryJoinMap[k] || [];
@@ -3190,6 +3252,8 @@ const Merger = {
         octDeliverable: numAgg('octDeliverable'),
         octDeliveryDate: firstAgg('octDeliveryDate'),
         octRemark: txtAgg('octRemark'),
+        // 预估销量：按 渠道+SKU+FBA+组合+国家 精确匹配（来自周度监控明细表）
+        sepEstSales: est.sepEstSales || '',
         // 运营看板明细：按 渠道+SKU+FBA+组合+PO+国家 精确匹配
         stockoutDate: ops.stockoutDate || '',
         nextBatchDate: ops.nextBatchDate || '',
@@ -3262,6 +3326,7 @@ const COLS = {
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
     { f: 'planManager', l: '计划负责人' },
+    { f: 'sepEstSales', l: '9月预估销量' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3297,6 +3362,7 @@ const COLS = {
     { f: 'planManager', l: '计划负责人', filter: 'multi', filterKey: 'plan-manager', filterField: 'planManager' },
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
+    { f: 'sepEstSales', l: '9月预估销量' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3863,6 +3929,12 @@ const AdminUI = {
           debugLog('[handleUpload] ops_detail 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
           syncPromises.push(Store.setData('ops_detail', merged));
         }
+      } else if (fileType === 'est_sales') {
+        // 预估销量表：按 渠道+SKU+FBA+组合+国家 增量合并，只更新「9月预估销量」字段
+        const old = Store.getData('est_sales');
+        const merged = mergeEstSalesIncremental(projectEstSalesSlim(old), projectEstSalesSlim(result.data));
+        debugLog('[handleUpload] est_sales 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
+        syncPromises.push(Store.setData('est_sales', merged));
       } else if (overwrite && fileType !== 'supplier') {
         syncPromises.push(Store.setData(fileType, result.data));
       } else {
@@ -4102,7 +4174,7 @@ const AdminUI = {
 
   renderUploadSummary() {
     const types = [
-      { key: 'sales', label: '销量库存大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'delivery', label: '发货交付明细' },
+      { key: 'sales', label: '销量库存大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'est_sales', label: '预估销量' }, { key: 'delivery', label: '发货交付明细' },
       { key: 'supplier', label: '供应商追踪' }, { key: 'cancel', label: '供应商库存' },
       { key: 'replenish', label: '需补订单' },
       { key: 'goods', label: '货品表' },
@@ -4116,7 +4188,7 @@ const AdminUI = {
   },
 
   updateDataStatus() {
-    const total = ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'goods', 'whitelist'].reduce((s, t) => s + Store.getData(t).length, 0);
+    const total = ['sales', 'ops_detail', 'est_sales', 'delivery', 'supplier', 'cancel', 'replenish', 'goods', 'whitelist'].reduce((s, t) => s + Store.getData(t).length, 0);
     const lastUpd = Store.getLastUpdateText();
     const el = $('#admin-data-status');
     if (el) el.innerHTML = `共 <strong>${total}</strong> 条　|　<span style="color:var(--text-muted)">最后更新: ${lastUpd}</span>`;
@@ -4127,7 +4199,7 @@ const AdminUI = {
   renderUpdateTimes() {
     const u = Store.getUpdateTimes();
     const types = [
-      { key: 'sales', label: '销量大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'delivery', label: '发货交付' },
+      { key: 'sales', label: '销量大表' }, { key: 'ops_detail', label: '运营看板明细' }, { key: 'est_sales', label: '预估销量' }, { key: 'delivery', label: '发货交付' },
       { key: 'supplier', label: '供应商追踪' }, { key: 'cancel', label: '供应商库存' },
       { key: 'replenish', label: '需补订单' },
       { key: 'goods', label: '货品表' },
@@ -4328,7 +4400,7 @@ const AdminUI = {
     this.renderHistory();
     this.updateDataStatus();
     this.renderUploadSummary();
-    ['sales', 'ops_detail', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist'].forEach(t => {
+    ['sales', 'ops_detail', 'est_sales', 'delivery', 'supplier', 'cancel', 'replenish', 'whitelist'].forEach(t => {
       const el = $('#status-' + t);
       if (el) { el.textContent = ''; el.className = 'upload-status'; }
     });
