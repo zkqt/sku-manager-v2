@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260921v265';
+const APP_CODE_VERSION = '20260921v266';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -6866,6 +6866,29 @@ const OperationUI = {
     } else { body += '<p style="color:var(--text-muted)">暂无数据</p>'; }
 
     Modal.show('SKU: ' + channelSku + ' 的工厂/采购员明细', body);
+  },
+
+  // 导出当前运营登录用户看到的表（已按权限+所有筛选过滤，含全部分页行）
+  async exportCurrent() {
+    await ensureXLSX();
+    // filteredData 是 renderTable 后当前登录用户可见、且已应用全部筛选的完整数据集（非仅当前页）
+    const data = (this.filteredData && this.filteredData.length) ? this.filteredData : [];
+    if (!data.length) { showToast('当前没有可导出的数据', 'error'); return; }
+    const cols = COLS.operation;
+    const aoa = [cols.map(c => c.l)];
+    data.forEach(r => aoa.push(cols.map(c => {
+      if (c.html) return r[c.filterField] != null ? r[c.filterField] : ''; // html 列导出纯数值/文本，不带差异标记
+      const v = r[c.f];
+      return (v === undefined || v === null) ? '' : v;
+    })));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    const sheetName = ((this.userName || '运营') + (this.isAdmin ? '_管理员' : '') + '_看板').slice(0, 28);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const fname = '运营看板_' + (this.userName || '') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    xlsxWriteFile(wb, fname);
+    Store.addHistory({ user: this.userName, role: 'operation', action: '导出运营看板', detail: data.length + ' 条' });
+    showToast('已导出当前表 ' + data.length + ' 条');
   }
 };
 

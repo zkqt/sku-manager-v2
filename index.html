@@ -9,11 +9,11 @@
   <title>供应链协同管理系统</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preload" as="image" href="hero-bg.jpg" type="image/jpeg">
-  <link rel="stylesheet" href="style.css?v=20260921v265">
+  <link rel="stylesheet" href="style.css?v=20260921v266">
   <!-- 依赖本地化 + defer 延迟加载：库脚本不再阻塞首屏渲染，主页(Hero/角色卡)可秒出；Excel 解析/云端同步用到的库在后台下载 -->
-  <script defer src="supabase.min.js?v=20260921v265"></script>
+  <script defer src="supabase.min.js?v=20260921v266"></script>
   <script defer>if(typeof window.supabase==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);}</script>
-  <script defer src="lz-string.min.js?v=20260921v265"></script>
+  <script defer src="lz-string.min.js?v=20260921v266"></script>
   <script defer>if(typeof window.LZString==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js';document.head.appendChild(s);}</script>
 </head>
 <body>
@@ -518,6 +518,7 @@
           <span id="op-username" class="user-badge"></span>
           <span id="op-last-update" class="data-status" style="font-size:11px"></span>
           <button class="btn-sm" onclick="Sync.pullAndRefresh()" title="从 Supabase 拉取最新数据">🔄 云端刷新</button>
+          <button class="btn-sm btn-export" onclick="OperationUI.exportCurrent()" title="导出当前看到的运营看板（含全部筛选结果，Excel）">⬇ 导出表</button>
           <button class="btn-sm" onclick="showUsageGuide()" title="使用说明">📖 使用说明</button>
           <button class="btn-sm" onclick="Screen.show('screen-role')">退出</button>
         </div>
@@ -548,8 +549,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script defer src="config.js?v=20260921v265"></script>
-  <script defer src="sync_config.js?v=20260921v265"></script>
-  <script defer src="app.js?v=20260921v265"></script>
+  <script defer src="config.js?v=20260921v266"></script>
+  <script defer src="sync_config.js?v=20260921v266"></script>
+  <script defer src="app.js?v=20260921v266"></script>
 </body>
 </html>
