@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260923v269';
+const APP_CODE_VERSION = '20260923v270';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -5596,7 +5596,7 @@ const PurchaseUI = {
     const lower = col.toLowerCase();
     // 月份/时间类字段即使值是纯数字，也应按多选筛选处理，方便勾选和搜索
     if (lower.includes('月份') || lower.includes('month') || lower.includes('年月')) return false;
-    // 工厂库存（系统补插列）是数值
+    // 工厂库存（上传文件自带列）是数值
     if (col === '工厂库存') return true;
     // 供应商列即使值看起来像数字（如 "95"），也按多选筛选处理（与渠道筛选一致）
     if ((lower.includes('供应商') || lower.includes('supplier')) && !/库存|交期|状态|数量/.test(lower)) return false;
@@ -5613,40 +5613,12 @@ const PurchaseUI = {
   },
 
   _replenishGetCellValue(row, col) {
-    // 工厂库存：优先取上传文件(需补订单.xlsx)自带的「工厂库存」列（_raw 或顶层字段）
-    if (col === '工厂库存') {
-      if (row._raw && Object.prototype.hasOwnProperty.call(row._raw, '工厂库存')) return row._raw['工厂库存'];
-      if (row['工厂库存'] != null && String(row['工厂库存']).trim() !== '') return row['工厂库存'];
-      // 兜底：老数据(无该列)才按 SKU 从取消订单表聚合
-      return row._factoryStock != null ? row._factoryStock : '';
-    }
     return row._raw ? row._raw[col] : (row[normalizeText(col)] ?? '');
   },
 
-  // 工厂库存映射：从取消订单表的「供应商库存」按 SKU 聚合求和（与跟踪表「供应商库存」同源）
-  _replenishFactoryStockMap() {
-    const map = {};
-    (Store.getData('cancel') || []).forEach(r => {
-      const sku = normalizeText(String(r.channelSku || ''));
-      if (!sku) return;
-      const n = parseFloat(String(r.cancelSupplierStock == null ? '' : r.cancelSupplierStock).replace(/,/g, ''));
-      if (isNaN(n)) return;
-      map[sku] = (map[sku] || 0) + n;
-    });
-    return map;
-  },
-
-  // 给行集合补充 _factoryStock（按行 SKU 查工厂库存映射）
-  _replenishAttachFactoryStock(rows) {
-    const fsMap = this._replenishFactoryStockMap();
-    (rows || []).forEach(r => {
-      const sku = normalizeText(String(r.channelSku || ''));
-      r._factoryStock = (sku && fsMap[sku] !== undefined) ? fsMap[sku] : '';
-    });
-  },
-
-  // 工厂库存列固定插在「补单月份」之后（无论源表该列在何处，统一位置；源表无补单月份列时追加到最后）
+  // 工厂库存列仅在上传文件(需补订单.xlsx)自带该列时显示，固定插在「补单月份」之后（无该列则不显示，不再做取消订单表聚合兜底）
   _replenishInsertFactoryStockCol(cols) {
+    if (!cols.includes('工厂库存')) return cols;
     const next = cols.filter(c => c !== '工厂库存');
     const idx = next.findIndex(c => String(c).includes('补单月份'));
     next.splice(idx === -1 ? next.length : idx + 1, 0, '工厂库存');
@@ -5710,9 +5682,8 @@ const PurchaseUI = {
       const rawKeys = filtered[0]._raw ? Object.keys(filtered[0]._raw) : Object.keys(filtered[0]).filter(k => !k.startsWith('_'));
       displayCols = rawKeys.filter(k => k && !k.startsWith('_'));
     }
-    // 工厂库存列（固定插在「补单月份」之后）；值优先取上传文件自带的工厂库存列，老数据才回退取消订单表
+    // 工厂库存列：仅当上传文件自带该列时显示，固定插在「补单月份」之后（直接显示文件原值，不做聚合兜底）
     displayCols = this._replenishInsertFactoryStockCol(displayCols);
-    this._replenishAttachFactoryStock(filtered);
 
     // 顶部 SKU 搜索：优先匹配列名含"渠道SKU/SKU/sku"的列，否则匹配任意列
     const skuQ = ($('#purchase-replenish-search-sku')?.value || '').trim();
@@ -5988,9 +5959,8 @@ const PurchaseUI = {
     const data = this.replenishFilteredData;
     if (data.length === 0) { showToast('无数据可导出', 'error'); return; }
     const rawKeys = data[0]._raw ? Object.keys(data[0]._raw) : Object.keys(data[0]).filter(k => !k.startsWith('_'));
-    // 与页面一致：工厂库存列插在「补单月份」后，并补齐工厂库存值
+    // 与页面一致：工厂库存列仅当源数据自带时插在「补单月份」后，导出文件原值
     const cols = this._replenishInsertFactoryStockCol(rawKeys.filter(k => k && !k.startsWith('_')));
-    this._replenishAttachFactoryStock(data);
     const aoa = [cols];
     data.forEach(r => {
       aoa.push(cols.map(col => {
