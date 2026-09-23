@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260923v268';
+const APP_CODE_VERSION = '20260923v269';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -2700,9 +2700,10 @@ const ExcelParser = {
       return {
         ...obj,
         channel: get(['渠道']),
-        channelSku: get(['渠道sku', '渠道 sku', 'sku']),
+        channelSku: get(['渠道sku', '渠道 sku', 'sku', 'SKU']),
         buyer: get(['采购员', '采购负责人']),
-        cancelSupplierStock: get(['供应商库存', '库存']),
+        // 2026-09 新版供应商库存表：工厂库存列(E列)；旧表为 供应商库存
+        cancelSupplierStock: get(['工厂库存', '供应商库存', '库存']),
       };
     });
   },
