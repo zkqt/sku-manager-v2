@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260921v266';
+const APP_CODE_VERSION = '20260923v267';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -3405,6 +3405,8 @@ const COLS = {
   },
 
   // 采购-供应商追踪表列（工厂=供应商，只显示一个）
+  // v267：箱单三列改为 10月（oct 字段，来自供应商追踪表上传的 10月 列）；
+  // 移除 销售状态/202609目标/9月目标/交付数量/剩余交付/9月预计上架/供应商库存/9月可交数量/9月交期/9月采购备注
   supplier: [
     { f: 'channel', l: '渠道', filter: 'multi', filterKey: 'channel', filterField: 'channel' },
     { f: 'channelSku', l: 'SKU' },
@@ -3416,21 +3418,11 @@ const COLS = {
     { f: 'buyer', l: '采购员', filter: 'multi', filterKey: 'buyer', filterField: 'buyer' },
     { f: 'supplier', l: '供应商', filter: 'multi', filterKey: 'supplier', filterField: 'supplier' },
     { f: 'supplierStatus', l: '供应商状态', filter: 'multi', filterKey: 'supplier-status', filterField: 'supplierStatus' },
-    { f: 'salesStatus', l: '销售状态', filter: 'multi', filterKey: 'sales-status', filterField: 'salesStatus' },
-    { f: 'sepTargetSup', l: '202609目标', filter: 'numeric', filterKey: 'sep-target-sup', filterField: 'sepTargetSup' },
     { f: 'octTargetSup', l: '202610目标', filter: 'numeric', filterKey: 'oct-target-sup', filterField: 'octTargetSup' },
     { f: 'novTargetSup', l: '202611目标', filter: 'numeric', filterKey: 'nov-target-sup', filterField: 'novTargetSup' },
-    { f: 'augPendingBoxCombo', l: '9月待交付箱单-组合配件', filter: 'numeric', filterKey: 'pending-combo', filterField: 'augPendingBoxCombo' },
-    { f: 'augPendingBox', l: '9月待交付箱单', filter: 'numeric', filterKey: 'pending', filterField: 'augPendingBox' },
-    { f: 'augSpotBox', l: '9月现货箱单', filter: 'numeric', filterKey: 'aug-spot-box', filterField: 'augSpotBox' },
-    { f: 'augTarget', l: '9月目标', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
-    { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
-    { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
-    { f: 'sepOnShelf', l: '9月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
-    { f: 'cancelSupplierStock', l: '供应商库存', filter: 'multi', filterKey: 'cancel-supplier-stock', filterField: 'cancelSupplierStock' },
-    { f: 'sepDeliverable', l: '9月可交数量', edit: true, filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
-    { f: 'sepDeliveryDate', l: '9月交期', edit: true, filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
-    { f: 'sepRemark', l: '9月采购备注', edit: true, filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
+    { f: 'octPendingBoxCombo', l: '10月待交付箱单-组合配件', filter: 'numeric', filterKey: 'pending-combo', filterField: 'octPendingBoxCombo' },
+    { f: 'octPendingBox', l: '10月待交付箱单', filter: 'numeric', filterKey: 'pending', filterField: 'octPendingBox' },
+    { f: 'octSpotBox', l: '10月现货箱单', filter: 'numeric', filterKey: 'oct-spot-box', filterField: 'octSpotBox' },
     { f: 'octDeliverable', l: '10月可交数量', edit: true, filter: 'numeric', filterKey: 'oct-deliverable', filterField: 'octDeliverable' },
     { f: 'octDeliveryDate', l: '10月交期', edit: true, filter: 'multi', filterKey: 'oct-delivery-date', filterField: 'octDeliveryDate' },
     { f: 'octRemark', l: '10月采购备注', edit: true, filter: 'multi', filterKey: 'oct-remark', filterField: 'octRemark' },
@@ -3438,6 +3430,7 @@ const COLS = {
 };
 
 // 采购页“导出Excel / 批量上传”使用的列定义：保证导出→填写→上传是同一份表头，可交数量/交期/备注能写回 supplier
+// v267：与跟踪表视图同步——箱单三列改为 10月（oct 字段），移除 9月/销量类列
 const PURCHASE_TRACKING_EXPORT_COLS = [
   { f: 'channel', l: '渠道' },
   { f: 'channelSku', l: 'SKU' },
@@ -3449,16 +3442,11 @@ const PURCHASE_TRACKING_EXPORT_COLS = [
   { f: 'buyer', l: '采购员' },
   { f: 'supplier', l: '供应商' },
   { f: 'supplierStatus', l: '供应商状态' },
-  { f: 'salesStatus', l: '销售状态' },
-  { f: 'sepTargetSup', l: '202609目标' },
   { f: 'octTargetSup', l: '202610目标' },
   { f: 'novTargetSup', l: '202611目标' },
-  { f: 'augPendingBoxCombo', l: '9月待交付箱单-组合配件' },
-  { f: 'augPendingBox', l: '9月待交付箱单' },
-  { f: 'augSpotBox', l: '9月现货箱单' },
-  { f: 'sepDeliverable', l: '9月可交数量' },
-  { f: 'sepDeliveryDate', l: '9月交期' },
-  { f: 'sepRemark', l: '9月采购备注' },
+  { f: 'octPendingBoxCombo', l: '10月待交付箱单-组合配件' },
+  { f: 'octPendingBox', l: '10月待交付箱单' },
+  { f: 'octSpotBox', l: '10月现货箱单' },
   { f: 'octDeliverable', l: '10月可交数量' },
   { f: 'octDeliveryDate', l: '10月交期' },
   { f: 'octRemark', l: '10月采购备注' },
@@ -4979,11 +4967,10 @@ const PurchaseUI = {
     if (page < 0) page = 0;
     this._catPage[safeId] = page;
     const pageData = getPageData(data, page);
-    // 品类负责人分表仅显示用户指定的列
+    // 品类负责人分表仅显示用户指定的列（v267：与跟踪表同步改为 10月 列）
     const CAT_TAB_FIELDS = new Set([
       'channel', 'channelSku', 'comboSku', 'supplier', 'supplierStatus',
-      'augTarget', 'deliveryQty', 'remainingDelivery', 'sepOnShelf',
-      'augPendingBox', 'augSpotBox', 'augDeliverable', 'augDeliveryDate', 'augRemark'
+      'octPendingBox', 'octSpotBox', 'octDeliverable', 'octDeliveryDate', 'octRemark'
     ]);
     const cols = [
       { f: 'category', l: '品类' },
@@ -5608,6 +5595,10 @@ const PurchaseUI = {
     const lower = col.toLowerCase();
     // 月份/时间类字段即使值是纯数字，也应按多选筛选处理，方便勾选和搜索
     if (lower.includes('月份') || lower.includes('month') || lower.includes('年月')) return false;
+    // 工厂库存（系统补插列）是数值
+    if (col === '工厂库存') return true;
+    // 供应商列即使值看起来像数字（如 "95"），也按多选筛选处理（与渠道筛选一致）
+    if ((lower.includes('供应商') || lower.includes('supplier')) && !/库存|交期|状态|数量/.test(lower)) return false;
     const numericNames = ['数量', 'qty', 'quantity', '下单数量', 'orderqty', 'order_qty', '金额', 'price'];
     if (numericNames.some(n => lower.includes(n))) return true;
     let sample = [];
@@ -5621,7 +5612,42 @@ const PurchaseUI = {
   },
 
   _replenishGetCellValue(row, col) {
+    // 工厂库存：系统补插列（源表无此列时），取 renderReplenish 阶段按 SKU 聚合的值
+    if (col === '工厂库存' && !(row._raw && Object.prototype.hasOwnProperty.call(row._raw, col))) {
+      return row._factoryStock != null ? row._factoryStock : '';
+    }
     return row._raw ? row._raw[col] : (row[normalizeText(col)] ?? '');
+  },
+
+  // 工厂库存映射：从取消订单表的「供应商库存」按 SKU 聚合求和（与跟踪表「供应商库存」同源）
+  _replenishFactoryStockMap() {
+    const map = {};
+    (Store.getData('cancel') || []).forEach(r => {
+      const sku = normalizeText(String(r.channelSku || ''));
+      if (!sku) return;
+      const n = parseFloat(String(r.cancelSupplierStock == null ? '' : r.cancelSupplierStock).replace(/,/g, ''));
+      if (isNaN(n)) return;
+      map[sku] = (map[sku] || 0) + n;
+    });
+    return map;
+  },
+
+  // 给行集合补充 _factoryStock（按行 SKU 查工厂库存映射）
+  _replenishAttachFactoryStock(rows) {
+    const fsMap = this._replenishFactoryStockMap();
+    (rows || []).forEach(r => {
+      const sku = normalizeText(String(r.channelSku || ''));
+      r._factoryStock = (sku && fsMap[sku] !== undefined) ? fsMap[sku] : '';
+    });
+  },
+
+  // 工厂库存列插在「补单月份」之后（源表无补单月份列时追加到最后）；源表自带工厂库存列则不重复插
+  _replenishInsertFactoryStockCol(cols) {
+    if (cols.includes('工厂库存')) return cols;
+    const idx = cols.findIndex(c => String(c).includes('补单月份'));
+    const next = cols.slice();
+    next.splice(idx === -1 ? next.length : idx + 1, 0, '工厂库存');
+    return next;
   },
 
   _replenishToNum(v) {
@@ -5681,6 +5707,9 @@ const PurchaseUI = {
       const rawKeys = filtered[0]._raw ? Object.keys(filtered[0]._raw) : Object.keys(filtered[0]).filter(k => !k.startsWith('_'));
       displayCols = rawKeys.filter(k => k && !k.startsWith('_'));
     }
+    // 工厂库存列（插在「补单月份」后）+ 按 SKU 聚合的工厂库存值（来自取消订单表）
+    displayCols = this._replenishInsertFactoryStockCol(displayCols);
+    this._replenishAttachFactoryStock(filtered);
 
     // 顶部 SKU 搜索：优先匹配列名含"渠道SKU/SKU/sku"的列，否则匹配任意列
     const skuQ = ($('#purchase-replenish-search-sku')?.value || '').trim();
@@ -5956,11 +5985,13 @@ const PurchaseUI = {
     const data = this.replenishFilteredData;
     if (data.length === 0) { showToast('无数据可导出', 'error'); return; }
     const rawKeys = data[0]._raw ? Object.keys(data[0]._raw) : Object.keys(data[0]).filter(k => !k.startsWith('_'));
-    const cols = rawKeys.filter(k => k && !k.startsWith('_'));
+    // 与页面一致：工厂库存列插在「补单月份」后，并补齐工厂库存值
+    const cols = this._replenishInsertFactoryStockCol(rawKeys.filter(k => k && !k.startsWith('_')));
+    this._replenishAttachFactoryStock(data);
     const aoa = [cols];
     data.forEach(r => {
       aoa.push(cols.map(col => {
-        const v = r._raw ? r._raw[col] : r[normalizeText(col)];
+        const v = this._replenishGetCellValue(r, col);
         return v ?? '';
       }));
     });
@@ -7034,9 +7065,6 @@ const PURCHASE_MULTI_FILTERS = [
   { col: 'supplier-status', prop: 'supplierStatusFilter', field: 'supplierStatus', label: '供应商状态' },
   { col: 'sup-is-combo', prop: 'supIsComboFilter', field: 'isCombo', label: '是否组合' },
   { col: 'sup-is-fba', prop: 'supIsFbaFilter', field: 'isFba', label: '是否FBA' },
-  { col: 'cancel-supplier-stock', prop: 'cancelSupplierStockFilter', field: 'cancelSupplierStock', label: '供应商库存' },
-  { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '9月交期' },
-  { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '9月采购备注' },
   { col: 'oct-delivery-date', prop: 'octDeliveryDateFilter', field: 'octDeliveryDate', label: '10月交期' },
   { col: 'oct-remark', prop: 'octRemarkFilter', field: 'octRemark', label: '10月采购备注' },
 ];
@@ -7048,16 +7076,13 @@ PurchaseUI._hmGetSourceData = function () {
   return Merger.getMergedData();
 };
 
-// 采购页接入表头数值筛选（交付数量/剩余交付/202609-10目标/待交付箱单/现货箱单/9月可交数量/9月目标/9月10月可交数量）
+// 采购页接入表头数值筛选（202610-11目标/10月待交付箱单/10月现货箱单/10月可交数量；v267 移除 9月 类列）
 const PURCHASE_NUM_FILTERS = [
-  { prop: 'sepTargetSupFilter', col: 'sep-target-sup', field: 'sepTargetSup', label: '202609目标' },
   { prop: 'octTargetSupFilter', col: 'oct-target-sup', field: 'octTargetSup', label: '202610目标' },
   { prop: 'novTargetSupFilter', col: 'nov-target-sup', field: 'novTargetSup', label: '202611目标' },
-  { prop: 'pendingComboFilter', col: 'pending-combo', field: 'augPendingBoxCombo', label: '9月待交付箱单-组合配件' },
-  { prop: 'pendingFilter', col: 'pending', field: 'augPendingBox', label: '9月待交付箱单' },
-  { prop: 'augSpotBoxFilter', col: 'aug-spot-box', field: 'augSpotBox', label: '9月现货箱单' },
-  { prop: 'sepOnShelfFilter', col: 'sep-on-shelf', field: 'sepOnShelf', label: '9月预计上架' },
-  { prop: 'sepDeliverableFilter', col: 'sep-deliverable', field: 'sepDeliverable', label: '9月可交数量' },
+  { prop: 'pendingComboFilter', col: 'pending-combo', field: 'octPendingBoxCombo', label: '10月待交付箱单-组合配件' },
+  { prop: 'pendingFilter', col: 'pending', field: 'octPendingBox', label: '10月待交付箱单' },
+  { prop: 'octSpotBoxFilter', col: 'oct-spot-box', field: 'octSpotBox', label: '10月现货箱单' },
   { prop: 'octDeliverableFilter', col: 'oct-deliverable', field: 'octDeliverable', label: '10月可交数量' },
 ];
 Object.assign(PurchaseUI, numericFilterMixin('purchase', PURCHASE_NUM_FILTERS, 'renderSupplier'));
