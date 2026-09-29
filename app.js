@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260929v271';
+const APP_CODE_VERSION = '20260929v272';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -4946,6 +4946,16 @@ const PurchaseUI = {
     return '';
   },
 
+  // 负责品类 → 需补订单品类：模糊包含匹配（词根法）
+  // 例：负责品类「减震器」可匹配「减震器及总成」「减震器总成」「减震器平衡杆」等
+  _catFuzzyMatch(cat, rowCat) {
+    const a = normalizeText(cat);
+    const b = normalizeText(rowCat);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return a.includes(b) || b.includes(a);
+  },
+
   renderCategoryReplenishBySafeId(safeId) {
     const cat = this.categories.find(c => this._safeCatId(c) === safeId);
     if (cat) this.renderCategoryReplenish(cat);
@@ -4956,8 +4966,7 @@ const PurchaseUI = {
     const safeId = this._safeCatId(cat);
     const container = $('#pcat-replenish-table-' + safeId);
     if (!container) return;
-    const cn = normalizeText(cat);
-    const all = (Store.getData('replenish') || []).filter(r => normalizeText(this._replenishRowCategory(r)) === cn);
+    const all = (Store.getData('replenish') || []).filter(r => this._catFuzzyMatch(cat, this._replenishRowCategory(r)));
     // 列定义：用文件原始列名，工厂库存固定插在「补单月份」之后（无该列则不显示）
     let displayCols = [];
     if (all.length > 0) {
@@ -5023,8 +5032,7 @@ const PurchaseUI = {
     await ensureXLSX();
     const cat = this.categories.find(c => this._safeCatId(c) === safeId);
     if (!cat) return;
-    const cn = normalizeText(cat);
-    const all = (Store.getData('replenish') || []).filter(r => normalizeText(this._replenishRowCategory(r)) === cn);
+    const all = (Store.getData('replenish') || []).filter(r => this._catFuzzyMatch(cat, this._replenishRowCategory(r)));
     if (all.length === 0) { showToast('该品类暂无需补订单可导出', 'error'); return; }
     let cols = [];
     const rawKeys = all[0]._raw ? Object.keys(all[0]._raw) : Object.keys(all[0]).filter(k => !k.startsWith('_'));
@@ -5046,7 +5054,6 @@ const PurchaseUI = {
     const safeId = this._safeCatId(cat);
     const container = $('#pcat-table-' + safeId);
     if (!container) return;
-    const cn = normalizeText(cat);
     // 带版本缓存：supplier/delivery 未变时复用已匹配数据
     const ver = Store._purchaseVersion || 0;
     if (!this._catData) this._catData = {};
@@ -5054,7 +5061,7 @@ const PurchaseUI = {
     if (!data || data._v !== ver) {
       const supplierAll = Store.getData('supplier');
       // 品类分表：只显示当前登录采购员/品类负责人自己名下的 SKU
-      let all = supplierAll.filter(r => normalizeText(rowCategoryOf(r)) === cn);
+      let all = supplierAll.filter(r => this._catFuzzyMatch(cat, rowCategoryOf(r)));
       if (this.userName) {
         all = all.filter(r => buyerExact(r.buyer, this.userName));
       }
@@ -5132,8 +5139,7 @@ const PurchaseUI = {
 
   async exportCategory(cat) {
     await ensureXLSX();
-    const cn = normalizeText(cat);
-    let data = Store.getData('supplier').filter(r => normalizeText(rowCategoryOf(r)) === cn);
+    let data = Store.getData('supplier').filter(r => this._catFuzzyMatch(cat, rowCategoryOf(r)));
     // 品类分表只导出当前登录用户自己名下的 SKU
     if (this.userName) {
       data = data.filter(r => buyerExact(r.buyer, this.userName));
