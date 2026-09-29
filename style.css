@@ -418,9 +418,12 @@ th:hover .col-filter-btn, .col-filter-btn:hover, .col-filter-btn.col-filter-acti
 #purchase-cat-tab-contents .cat-tab-content { display: none; }
 #purchase-cat-tab-contents .cat-tab-content.active {
   display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0;
+  overflow-y: auto; /* 上下两个表格（供应商追踪表+需补订单）内容超出时整体可滚动 */
 }
-#purchase-cat-tab-contents .cat-tab-content.active .data-table-wrap {
-  flex: 1; min-height: 0; padding: 0 24px 8px;
+/* 品类Tab内两个表格不再抢占 flex 剩余高度，而是各自限高、内部滚动 */
+#purchase-cat-tab-contents .cat-tab-content.active .data-table-wrap { flex: none; }
+#purchase-cat-tab-contents .cat-tab-content.active .data-table-wrap .table-scroll {
+  flex: none; height: auto; max-height: 42vh; overflow: auto;
 }
 
 /* ===== 采购工作台顶部仪表盘 ===== */
