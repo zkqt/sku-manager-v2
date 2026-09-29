@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260929v272';
+const APP_CODE_VERSION = '20260929v273';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -4860,6 +4860,39 @@ const PurchaseUI = {
     return 'cat_' + encodeURIComponent(cat).replace(/%/g, '_');
   },
 
+  // 两串的最长公共前缀
+  _catLcp(a, b) {
+    let i = 0;
+    const A = String(a || ''), B = String(b || '');
+    while (i < A.length && i < B.length && A[i] === B[i]) i++;
+    return A.slice(0, i);
+  },
+
+  // 负责品类按公共词根聚类（词根≥2字才合并）：
+  // 例：减震器及总成/减震器总成/减震器平衡杆/减震器平衡杆组合 → 合并为一个「减震器」组，共用一个 Tab/表
+  _catGroups() {
+    const cats = (this.categories || []).map(c => String(c).trim()).filter(Boolean);
+    const groups = [];
+    cats.forEach(cat => {
+      let best = null, bestLen = 0;
+      groups.forEach(g => {
+        const lcp = this._catLcp(g.root, cat).length;
+        if (lcp > bestLen) { best = g; bestLen = lcp; }
+      });
+      if (best && bestLen >= 2) {
+        best.members.push(cat);
+        best.root = best.members.reduce((acc, m) => this._catLcp(acc, m));
+      } else {
+        groups.push({ root: cat, members: [cat] });
+      }
+    });
+    return groups;
+  },
+
+  _findCatGroup(safeId) {
+    return this._catGroups().find(g => this._safeCatId(g.root) === safeId) || null;
+  },
+
   renderCategoryTabs() {
     const tabsContainer = $('#purchase-cat-tabs');
     const contentsContainer = $('#purchase-cat-tab-contents');
@@ -4870,15 +4903,18 @@ const PurchaseUI = {
       return;
     }
     // 若当前激活的 category 已被删除，回退到供应商追踪表
-    const validTabs = new Set(['supplier', 'replenish', ...this.categories.map(c => this._safeCatId(c))]);
+    const groups = this._catGroups();
+    const validTabs = new Set(['supplier', 'replenish', ...groups.map(g => this._safeCatId(g.root))]);
     if (!validTabs.has(this.activeTab)) this.activeTab = 'supplier';
 
     let tabsHtml = '';
     let contentsHtml = '';
-    this.categories.forEach(cat => {
+    groups.forEach(g => {
+      const cat = g.root;
       const safeId = this._safeCatId(cat);
       const active = this.activeTab === safeId ? 'active' : '';
-      tabsHtml += `<div class="tab ${active}" data-cattab="${safeId}" onclick="PurchaseUI.switchTab('${safeId}')">📦 ${escapeHtml(cat)}</div>`;
+      const title = g.members.length > 1 ? `${escapeHtml(cat)}（含 ${g.members.length} 类）` : escapeHtml(cat);
+      tabsHtml += `<div class="tab ${active}" data-cattab="${safeId}" onclick="PurchaseUI.switchTab('${safeId}')">📦 ${title}</div>`;
       contentsHtml += `<div id="pcat-tab-${safeId}" class="tab-content cat-tab-content ${active}">
         <div class="table-toolbar" style="display:flex;align-items:center;gap:12px">
           <button class="btn-sm" onclick="PurchaseUI.exportCategoryBySafeId('${safeId}')">⬇ 导出本表</button>
@@ -4931,8 +4967,8 @@ const PurchaseUI = {
   },
 
   renderCategorySupplierBySafeId(safeId) {
-    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
-    if (cat) this.renderCategorySupplier(cat);
+    const g = this._findCatGroup(safeId);
+    if (g) this.renderCategorySupplier(g.root);
   },
 
   // 取需补订单行的品类（从原始 _raw 列名「品类/类目/类别/category」中识别）
@@ -4957,8 +4993,8 @@ const PurchaseUI = {
   },
 
   renderCategoryReplenishBySafeId(safeId) {
-    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
-    if (cat) this.renderCategoryReplenish(cat);
+    const g = this._findCatGroup(safeId);
+    if (g) this.renderCategoryReplenish(g.root);
   },
 
   // 品类负责人品类 Tab 内的「需补订单」分表：显示该品类下全部需补订单，原样（按上传文件列）
@@ -5023,15 +5059,16 @@ const PurchaseUI = {
   goToCatReplenishPage(safeId, page) {
     if (!this._catReplenishPage) this._catReplenishPage = {};
     this._catReplenishPage[safeId] = page;
-    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
-    if (cat) this.renderCategoryReplenish(cat);
+    const g = this._findCatGroup(safeId);
+    if (g) this.renderCategoryReplenish(g.root);
   },
 
   // 导出某品类 Tab 下「需补订单」分表的全部数据（原样，含工厂库存列定位）
   async exportCategoryReplenish(safeId) {
     await ensureXLSX();
-    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
-    if (!cat) return;
+    const g = this._findCatGroup(safeId);
+    if (!g) return;
+    const cat = g.root;
     const all = (Store.getData('replenish') || []).filter(r => this._catFuzzyMatch(cat, this._replenishRowCategory(r)));
     if (all.length === 0) { showToast('该品类暂无需补订单可导出', 'error'); return; }
     let cols = [];
@@ -5127,14 +5164,14 @@ const PurchaseUI = {
   goToCatPage(safeId, page) {
     if (!this._catPage) this._catPage = {};
     this._catPage[safeId] = page;
-    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
-    if (cat) this.renderCategorySupplier(cat);
+    const g = this._findCatGroup(safeId);
+    if (g) this.renderCategorySupplier(g.root);
   },
 
   // 导出某个品类负责人 Tab 下的全部数据（所有页，非当前页）
   exportCategoryBySafeId(safeId) {
-    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
-    if (cat) this.exportCategory(cat);
+    const g = this._findCatGroup(safeId);
+    if (g) this.exportCategory(g.root);
   },
 
   async exportCategory(cat) {
