@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260929v273';
+const APP_CODE_VERSION = '20260929v274';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -4870,6 +4870,8 @@ const PurchaseUI = {
 
   // 负责品类按公共词根聚类（词根≥2字才合并）：
   // 例：减震器及总成/减震器总成/减震器平衡杆/减震器平衡杆组合 → 合并为一个「减震器」组，共用一个 Tab/表
+  // 聚类宇宙除「负责人配置的品类」外，还包含数据中实际出现的品类值（供应商追踪表/需补订单）——
+  // 即使负责人只配了「减震器及总成」，数据里出现的「减震器总成/减震器平衡杆」等也会并入同一组，词根收敛为「减震器」
   _catGroups() {
     const cats = (this.categories || []).map(c => String(c).trim()).filter(Boolean);
     const groups = [];
@@ -4884,6 +4886,28 @@ const PurchaseUI = {
         best.root = best.members.reduce((acc, m) => this._catLcp(acc, m));
       } else {
         groups.push({ root: cat, members: [cat] });
+      }
+    });
+    // 扩展：并入数据中实际出现的品类值（LCP≥2字才合并）
+    const dataCats = new Set();
+    (Store.getData('supplier') || []).forEach(r => {
+      const c = String(rowCategoryOf(r) || '').trim();
+      if (c) dataCats.add(c);
+    });
+    (Store.getData('replenish') || []).forEach(r => {
+      const c = String(this._replenishRowCategory(r) || '').trim();
+      if (c) dataCats.add(c);
+    });
+    dataCats.forEach(dc => {
+      if (groups.some(g => g.members.includes(dc))) return;
+      let best = null, bestLen = 0;
+      groups.forEach(g => {
+        const lcp = this._catLcp(g.root, dc).length;
+        if (lcp > bestLen) { best = g; bestLen = lcp; }
+      });
+      if (best && bestLen >= 2) {
+        best.members.push(dc);
+        best.root = best.members.reduce((acc, m) => this._catLcp(acc, m));
       }
     });
     return groups;
