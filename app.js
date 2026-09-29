@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20260923v270';
+const APP_CODE_VERSION = '20260929v271';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -4886,6 +4886,16 @@ const PurchaseUI = {
         </div>
         <div id="pcat-table-${safeId}" class="data-table-wrap"></div>
         <div id="pcat-pagination-${safeId}" class="pagination-wrap"></div>
+
+        <div class="cat-subsection" style="margin-top:22px;border-top:1px dashed var(--border,#ddd);padding-top:14px">
+          <div class="table-toolbar" style="display:flex;align-items:center;gap:12px">
+            <h4 style="margin:0">📋 该品类需补订单（原样）</h4>
+            <button class="btn-sm" onclick="PurchaseUI.exportCategoryReplenish('${safeId}')">⬇ 导出需补订单</button>
+            <span id="pcat-replenish-count-${safeId}" class="cat-count" style="color:var(--text-muted);font-size:13px"></span>
+          </div>
+          <div id="pcat-replenish-table-${safeId}" class="data-table-wrap"></div>
+          <div id="pcat-replenish-pagination-${safeId}" class="pagination-wrap"></div>
+        </div>
       </div>`;
     });
     tabsContainer.innerHTML = tabsHtml;
@@ -4916,12 +4926,118 @@ const PurchaseUI = {
       $('#pcat-tab-' + tab).classList.add('active');
       if (catContainer) catContainer.classList.add('active');
       this.renderCategorySupplierBySafeId(tab);
+      this.renderCategoryReplenishBySafeId(tab);
     }
   },
 
   renderCategorySupplierBySafeId(safeId) {
     const cat = this.categories.find(c => this._safeCatId(c) === safeId);
     if (cat) this.renderCategorySupplier(cat);
+  },
+
+  // 取需补订单行的品类（从原始 _raw 列名「品类/类目/类别/category」中识别）
+  _replenishRowCategory(row) {
+    const raw = row && row._raw ? row._raw : {};
+    if (raw['品类'] != null && String(raw['品类']).trim() !== '') return String(raw['品类']).trim();
+    for (const k of Object.keys(raw)) {
+      if (/品类|类目|类别|category/i.test(k) && raw[k] != null && String(raw[k]).trim() !== '') return String(raw[k]).trim();
+    }
+    if (row && row.category) return String(row.category);
+    return '';
+  },
+
+  renderCategoryReplenishBySafeId(safeId) {
+    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
+    if (cat) this.renderCategoryReplenish(cat);
+  },
+
+  // 品类负责人品类 Tab 内的「需补订单」分表：显示该品类下全部需补订单，原样（按上传文件列）
+  renderCategoryReplenish(cat) {
+    const safeId = this._safeCatId(cat);
+    const container = $('#pcat-replenish-table-' + safeId);
+    if (!container) return;
+    const cn = normalizeText(cat);
+    const all = (Store.getData('replenish') || []).filter(r => normalizeText(this._replenishRowCategory(r)) === cn);
+    // 列定义：用文件原始列名，工厂库存固定插在「补单月份」之后（无该列则不显示）
+    let displayCols = [];
+    if (all.length > 0) {
+      const rawKeys = all[0]._raw ? Object.keys(all[0]._raw) : Object.keys(all[0]).filter(k => !k.startsWith('_'));
+      displayCols = rawKeys.filter(k => k && !k.startsWith('_'));
+    }
+    displayCols = this._replenishInsertFactoryStockCol(displayCols);
+
+    const countEl = $('#pcat-replenish-count-' + safeId);
+    if (countEl) countEl.textContent = '共 ' + all.length + ' 条';
+    if (all.length === 0) {
+      container.innerHTML = '<p style="padding:20px;color:var(--text-muted)">该品类暂无需补订单</p>';
+      const pg = $('#pcat-replenish-pagination-' + safeId); if (pg) pg.innerHTML = '';
+      return;
+    }
+    if (!this._catReplenishPage) this._catReplenishPage = {};
+    let page = this._catReplenishPage[safeId] || 0;
+    const totalPages = Math.ceil(all.length / PAGE_SIZE);
+    if (page >= totalPages) page = totalPages - 1;
+    if (page < 0) page = 0;
+    this._catReplenishPage[safeId] = page;
+    const pageData = getPageData(all, page);
+    let html = '<div class="table-scroll"><table class="data-table"><thead><tr>';
+    displayCols.forEach(col => { html += `<th><span class="th-label">${escapeHtml(col)}</span></th>`; });
+    html += '</tr></thead><tbody>';
+    pageData.forEach(row => {
+      html += '<tr>';
+      displayCols.forEach(col => {
+        const val = this._replenishGetCellValue(row, col);
+        html += `<td title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    setTableHTML(container, html);
+    const pgEl = $('#pcat-replenish-pagination-' + safeId);
+    if (pgEl) {
+      if (totalPages <= 1) { pgEl.innerHTML = ''; }
+      else {
+        let ph = '<div class="pagination">';
+        ph += `<button class="page-btn" ${page <= 0 ? 'disabled' : ''} onclick="PurchaseUI.goToCatReplenishPage('${safeId}',${page - 1})">上一页</button>`;
+        const start = Math.max(0, page - 3), end = Math.min(totalPages, start + 7);
+        for (let i = start; i < end; i++) {
+          ph += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="PurchaseUI.goToCatReplenishPage('${safeId}',${i})">${i + 1}</button>`;
+        }
+        ph += `<button class="page-btn" ${page >= totalPages - 1 ? 'disabled' : ''} onclick="PurchaseUI.goToCatReplenishPage('${safeId}',${page + 1})">下一页</button>`;
+        ph += `<span class="page-info">第 ${page + 1}/${totalPages} 页 (共${all.length}条)</span>`;
+        ph += '</div>';
+        pgEl.innerHTML = ph;
+      }
+    }
+  },
+
+  goToCatReplenishPage(safeId, page) {
+    if (!this._catReplenishPage) this._catReplenishPage = {};
+    this._catReplenishPage[safeId] = page;
+    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
+    if (cat) this.renderCategoryReplenish(cat);
+  },
+
+  // 导出某品类 Tab 下「需补订单」分表的全部数据（原样，含工厂库存列定位）
+  async exportCategoryReplenish(safeId) {
+    await ensureXLSX();
+    const cat = this.categories.find(c => this._safeCatId(c) === safeId);
+    if (!cat) return;
+    const cn = normalizeText(cat);
+    const all = (Store.getData('replenish') || []).filter(r => normalizeText(this._replenishRowCategory(r)) === cn);
+    if (all.length === 0) { showToast('该品类暂无需补订单可导出', 'error'); return; }
+    let cols = [];
+    const rawKeys = all[0]._raw ? Object.keys(all[0]._raw) : Object.keys(all[0]).filter(k => !k.startsWith('_'));
+    cols = this._replenishInsertFactoryStockCol(rawKeys.filter(k => k && !k.startsWith('_')));
+    const aoa = [cols];
+    all.forEach(r => { aoa.push(cols.map(col => this._replenishGetCellValue(r, col) ?? '')); });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, String(cat).slice(0, 28) || '品类');
+    const fname = '品类_' + cat + '_需补订单_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    XLSX.writeFile(wb, fname);
+    Store.addHistory({ user: this.userName, role: 'purchase', action: '导出品类需补订单', detail: cat + ' ' + all.length + ' 条' });
+    showToast('已导出该品类需补订单 ' + all.length + ' 条');
   },
 
   // 单个品类 Tab：供应商追踪表中 category 匹配该品类的所有行（所有采购员），带催更按钮
