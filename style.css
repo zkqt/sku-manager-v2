@@ -495,6 +495,9 @@ th:hover .col-filter-btn, .col-filter-btn:hover, .col-filter-btn.col-filter-acti
 .data-table tr.row-selected:hover td { background: #cfe3fd !important; }
 .data-table .editable { background: #fffbeb; cursor: text; }
 .data-table .editable:hover { background: #fef3c7; }
+.data-table .editable.overridden { background: #e0f2fe; }
+.data-table .editable.overridden:hover { background: #bae6fd; }
+.ovr-badge { color: #0284c7; font-size: 11px; margin-left: 2px; vertical-align: middle; }
 .data-table .clickable { color: var(--primary); cursor: pointer; text-decoration: underline; }
 .data-table .highlight-row { background: #eff6ff; }
 

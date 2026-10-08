@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20261008v276';
+const APP_CODE_VERSION = '20261008v277';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -1471,7 +1471,7 @@ const Store = {
   _set(k, v) {
     this._memCache.delete(this._key(k));
     // 合并源数据（销售/发货/供应商/取消）变化时，自增版本号，使 Merger 缓存失效
-    if (k === 'data_sales' || k === 'data_delivery' || k === 'data_supplier' || k === 'data_cancel') {
+    if (k === 'data_sales' || k === 'data_delivery' || k === 'data_supplier' || k === 'data_cancel' || k === 'data_est_sales') {
       this._mergeVersion++;
     }
     // 供应商/交付明细/国内即时库存变化时才自增“采购富数据版本”，供 PurchaseUI 缓存失效（避免无关数据变更也重算）
@@ -2854,8 +2854,10 @@ function projectOpsDetailSlim(rows) {
 // 管理员上传「周度监控明细表」，只保留 5 个身份字段（渠道/渠道SKU/FBA/组合/国家，无PO）
 // + 1 个数据字段（sepEstSales=2026-9预估销量），按键增量合并后投影到运营/计划主表「9月预估销量」列。
 const EST_SALES_KEY_FIELDS = ['channel', 'channelSku', 'isFba', 'isCombo', 'country'];
+// DATA_FIELDS 为上传可覆盖的字段；estSalesOverride 是各端手动编辑的「覆盖值」，不在此列，重传时受保护不被覆盖。
+// 但需纳入 SLIM_FIELDS，使增量合并时旧记录的覆盖值能保留下来（不随上传被抹掉）。
 const EST_SALES_DATA_FIELDS = ['sepEstSales'];
-const EST_SALES_SLIM_FIELDS = [...EST_SALES_KEY_FIELDS, ...EST_SALES_DATA_FIELDS];
+const EST_SALES_SLIM_FIELDS = [...EST_SALES_KEY_FIELDS, ...EST_SALES_DATA_FIELDS, 'estSalesOverride'];
 function estSalesKey(r) {
   return [r.channel, r.channelSku, r.isFba, r.isCombo, r.country]
     .map(v => normalizeText(String(v || ''))).join('|');
@@ -3256,7 +3258,11 @@ const Merger = {
         octDeliveryDate: firstAgg('octDeliveryDate'),
         octRemark: txtAgg('octRemark'),
         // 预估销量：按 渠道+SKU+FBA+组合+国家 精确匹配（来自周度监控明细表）
-        sepEstSales: est.sepEstSales || '',
+        // 覆盖值（estSalesOverride，由各端在运营/计划主表手动编辑）优先；为空时回退到导入值 sepEstSales。
+        sepEstSalesImport: est.sepEstSales || '',
+        sepEstSalesOverride: est.estSalesOverride || '',
+        sepEstSales: (est.estSalesOverride && est.estSalesOverride !== '') ? est.estSalesOverride : (est.sepEstSales || ''),
+        sepEstSalesOverridden: !!(est.estSalesOverride && est.estSalesOverride !== ''),
         // 运营看板明细：按 渠道+SKU+FBA+组合+PO+国家 精确匹配
         stockoutDate: ops.stockoutDate || '',
         nextBatchDate: ops.nextBatchDate || '',
@@ -3329,7 +3335,7 @@ const COLS = {
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
     { f: 'planManager', l: '计划负责人' },
-    { f: 'sepEstSales', l: '10月预估销量' },
+    { f: 'sepEstSales', l: '10月预估销量', edit: true, flagField: 'sepEstSalesOverridden' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3365,7 +3371,7 @@ const COLS = {
     { f: 'planManager', l: '计划负责人', filter: 'multi', filterKey: 'plan-manager', filterField: 'planManager' },
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
-    { f: 'sepEstSales', l: '10月预估销量' },
+    { f: 'sepEstSales', l: '10月预估销量', edit: true, flagField: 'sepEstSalesOverridden' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3555,7 +3561,9 @@ function renderExpandableTable(cols, data, opts) {
         }
         html += `<td ${freezeStyle}>${inner}</td>`;
       } else if (c.edit && opts.editable) {
-        html += `<td class="editable ${c.freeze ? 'frozen' : ''}" ${c.freeze ? `style="left:${freezeOffsets[ci] || 0}px;z-index:8"` : ''} onclick="${opts.editHandler || 'PurchaseUI.startEdit'}(${ri}, '${c.f}', this)" title="点击编辑">${escapeHtml(val) || '<span style="color:#ccc">点击编辑</span>'}</td>`;
+        const isOvr = c.flagField && row[c.flagField];
+        const marker = isOvr ? ' <span class="ovr-badge" title="已覆盖导入值">✎</span>' : '';
+        html += `<td class="editable ${isOvr ? 'overridden' : ''} ${c.freeze ? 'frozen' : ''}" ${c.freeze ? `style="left:${freezeOffsets[ci] || 0}px;z-index:8"` : ''} onclick="${opts.editHandler || 'PurchaseUI.startEdit'}(${ri}, '${c.f}', this)" title="点击编辑覆盖导入值">${escapeHtml(val) || '<span style="color:#ccc">点击编辑</span>'}${marker}</td>`;
       } else if (c.html) {
         html += `<td ${freezeStyle} title="">${val || '-'}</td>`;
       } else {
@@ -6237,6 +6245,8 @@ const PurchaseUI = {
     this.renderSupplier(); this.renderAlerts(); this.renderNagCount();
   },
 
+
+
   async batchUploadDates(file) {
     if (!file) return;
     try {
@@ -6660,6 +6670,49 @@ function numericFilterMixin(idPrefix, filterDefs, renderFnName) {
   return mixin;
 }
 
+
+// 预估销量覆盖：在运营/计划主表点击「10月预估销量」单元格，手动填写覆盖值。
+// 覆盖值写入 est_sales 记录的 estSalesOverride 字段（与导入值 sepEstSales 分离），重传周度监控明细表时受保护不被覆盖。
+function editEstSalesCell(ui, rowIdx, field, cell) {
+  if (ui.editingRow !== null && ui.editingRow !== undefined) return;
+  ui.editingRow = rowIdx;
+  const pageData = getPageData(ui.filteredData, ui.currentPage);
+  const row = pageData[rowIdx];
+  if (!row) { ui.editingRow = null; return; }
+  const oldVal = row[field] || '';
+  cell.innerHTML = `<input class="edit-input" type="number" value="${escapeHtml(oldVal)}" data-field="${field}" placeholder="数字，留空则不覆盖" style="text-align:right">`;
+  const input = cell.querySelector('input');
+  input.focus(); input.select();
+  const commit = () => {
+    let newVal = (input.value || '').trim();
+    if (newVal !== '') {
+      const num = parseFloat(newVal);
+      if (isNaN(num)) { showToast('请输入数字', 'error'); ui.editingRow = null; ui.renderTable(); return; }
+      newVal = String(num);
+    }
+    const all = Store.getData('est_sales');
+    const key = estSalesKey(row);
+    const idx = all.findIndex(r => estSalesKey(r) === key);
+    if (idx === -1) {
+      all.push({ channel: row.channel, channelSku: row.channelSku, isFba: row.isFba, isCombo: row.isCombo, country: row.country, estSalesOverride: newVal, sepEstSales: row.sepEstSalesImport || '' });
+    } else {
+      all[idx].estSalesOverride = newVal;
+    }
+    Store.setData('est_sales', all); // 触发 _mergeVersion++ 与云端同步
+    if (String(oldVal) !== String(newVal)) {
+      const role = (typeof OperationUI !== 'undefined' && ui === OperationUI) ? 'operation' : 'plan';
+      Store.addHistory({ user: ui.userName || '', role, action: '覆盖预估销量', detail: `${row.channelSku}/${field}: "${oldVal}"→"${newVal}"` });
+    }
+    ui.editingRow = null;
+    ui.renderTable();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { input.blur(); }
+    if (e.key === 'Escape') { input.value = oldVal; input.blur(); }
+  });
+}
+
 const PlanUI = {
   userName: '', currentPage: 0, filteredData: [], isAdmin: false,
 
@@ -6677,6 +6730,8 @@ const PlanUI = {
     // 异步渲染主表格，避免进入工作台时长时间白屏
     requestAnimationFrame(() => { this.renderOverview(); this.renderAlerts(); this.renderBuyerUnfilled(); });
   },
+
+  startEditEst(rowIdx, field, cell) { editEstSalesCell(this, rowIdx, field, cell); },
 
   // 自动刷新专用：只重渲染数据，保留当前页码/搜索/筛选状态
   refresh() {
@@ -6788,6 +6843,7 @@ const PlanUI = {
 
     const pageData = getPageData(data, this.currentPage);
     const html = renderExpandableTable(COLS.plan, pageData, {
+      editable: true, editHandler: 'PlanUI.startEditEst',
       offset: this.currentPage * PAGE_SIZE, expandPrefix: 'plan', role: 'plan',
       clickHandler: 'PlanUI.showBuyerDetails', headerFilterUI: 'PlanUI'
     });
@@ -6881,6 +6937,8 @@ const OperationUI = {
     // 异步渲染主表格，避免进入工作台时长时间白屏
     requestAnimationFrame(() => { this.renderTable(); });
   },
+
+  startEditEst(rowIdx, field, cell) { editEstSalesCell(this, rowIdx, field, cell); },
 
   // 自动刷新专用：只重渲染数据，保留当前页码/搜索/筛选状态
   refresh() {
@@ -7000,6 +7058,7 @@ const OperationUI = {
 
     const pageData = getPageData(data, this.currentPage);
     const html = renderExpandableTable(COLS.operation, pageData, {
+      editable: true, editHandler: 'OperationUI.startEditEst',
       offset: this.currentPage * PAGE_SIZE, expandPrefix: 'op', role: 'op',
       clickHandler: 'OperationUI.showBuyerDetails', headerFilterUI: 'OperationUI'
     });
