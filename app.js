@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20261008v277';
+const APP_CODE_VERSION = '20261008v278';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -2854,10 +2854,9 @@ function projectOpsDetailSlim(rows) {
 // 管理员上传「周度监控明细表」，只保留 5 个身份字段（渠道/渠道SKU/FBA/组合/国家，无PO）
 // + 1 个数据字段（sepEstSales=2026-9预估销量），按键增量合并后投影到运营/计划主表「9月预估销量」列。
 const EST_SALES_KEY_FIELDS = ['channel', 'channelSku', 'isFba', 'isCombo', 'country'];
-// DATA_FIELDS 为上传可覆盖的字段；estSalesOverride 是各端手动编辑的「覆盖值」，不在此列，重传时受保护不被覆盖。
-// 但需纳入 SLIM_FIELDS，使增量合并时旧记录的覆盖值能保留下来（不随上传被抹掉）。
+// DATA_FIELDS 为上传可覆盖的字段（此处仅 1 个：sepEstSales=2026-10预估销量）
 const EST_SALES_DATA_FIELDS = ['sepEstSales'];
-const EST_SALES_SLIM_FIELDS = [...EST_SALES_KEY_FIELDS, ...EST_SALES_DATA_FIELDS, 'estSalesOverride'];
+const EST_SALES_SLIM_FIELDS = [...EST_SALES_KEY_FIELDS, ...EST_SALES_DATA_FIELDS];
 function estSalesKey(r) {
   return [r.channel, r.channelSku, r.isFba, r.isCombo, r.country]
     .map(v => normalizeText(String(v || ''))).join('|');
@@ -3258,11 +3257,7 @@ const Merger = {
         octDeliveryDate: firstAgg('octDeliveryDate'),
         octRemark: txtAgg('octRemark'),
         // 预估销量：按 渠道+SKU+FBA+组合+国家 精确匹配（来自周度监控明细表）
-        // 覆盖值（estSalesOverride，由各端在运营/计划主表手动编辑）优先；为空时回退到导入值 sepEstSales。
-        sepEstSalesImport: est.sepEstSales || '',
-        sepEstSalesOverride: est.estSalesOverride || '',
-        sepEstSales: (est.estSalesOverride && est.estSalesOverride !== '') ? est.estSalesOverride : (est.sepEstSales || ''),
-        sepEstSalesOverridden: !!(est.estSalesOverride && est.estSalesOverride !== ''),
+        sepEstSales: est.sepEstSales || '',
         // 运营看板明细：按 渠道+SKU+FBA+组合+PO+国家 精确匹配
         stockoutDate: ops.stockoutDate || '',
         nextBatchDate: ops.nextBatchDate || '',
@@ -3335,7 +3330,7 @@ const COLS = {
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
     { f: 'planManager', l: '计划负责人' },
-    { f: 'sepEstSales', l: '10月预估销量', edit: true, flagField: 'sepEstSalesOverridden' },
+    { f: 'sepEstSales', l: '10月预估销量' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3371,7 +3366,7 @@ const COLS = {
     { f: 'planManager', l: '计划负责人', filter: 'multi', filterKey: 'plan-manager', filterField: 'planManager' },
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
-    { f: 'sepEstSales', l: '10月预估销量', edit: true, flagField: 'sepEstSalesOverridden' },
+    { f: 'sepEstSales', l: '10月预估销量' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3561,9 +3556,7 @@ function renderExpandableTable(cols, data, opts) {
         }
         html += `<td ${freezeStyle}>${inner}</td>`;
       } else if (c.edit && opts.editable) {
-        const isOvr = c.flagField && row[c.flagField];
-        const marker = isOvr ? ' <span class="ovr-badge" title="已覆盖导入值">✎</span>' : '';
-        html += `<td class="editable ${isOvr ? 'overridden' : ''} ${c.freeze ? 'frozen' : ''}" ${c.freeze ? `style="left:${freezeOffsets[ci] || 0}px;z-index:8"` : ''} onclick="${opts.editHandler || 'PurchaseUI.startEdit'}(${ri}, '${c.f}', this)" title="点击编辑覆盖导入值">${escapeHtml(val) || '<span style="color:#ccc">点击编辑</span>'}${marker}</td>`;
+        html += `<td class="editable ${c.freeze ? 'frozen' : ''}" ${c.freeze ? `style="left:${freezeOffsets[ci] || 0}px;z-index:8"` : ''} onclick="${opts.editHandler || 'PurchaseUI.startEdit'}(${ri}, '${c.f}', this)" title="点击编辑">${escapeHtml(val) || '<span style="color:#ccc">点击编辑</span>'}</td>`;
       } else if (c.html) {
         html += `<td ${freezeStyle} title="">${val || '-'}</td>`;
       } else {
@@ -3929,11 +3922,27 @@ const AdminUI = {
           syncPromises.push(Store.setData('ops_detail', merged));
         }
       } else if (fileType === 'est_sales') {
-        // 预估销量表：按 渠道+SKU+FBA+组合+国家 增量合并，只更新「9月预估销量」字段
-        const old = Store.getData('est_sales');
-        const merged = mergeEstSalesIncremental(projectEstSalesSlim(old), projectEstSalesSlim(result.data));
-        debugLog('[handleUpload] est_sales 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
-        syncPromises.push(Store.setData('est_sales', merged));
+        // 预估销量表：管理员可选择「增量更新」或「全部覆盖」。
+        // 两种模式都只上传 EST_SALES_SLIM_FIELDS 指定字段，区别在合并策略。
+        const mode = document.querySelector('input[name="est-sales-upload-mode"]:checked')?.value || 'incremental';
+        const slimNew = projectEstSalesSlim(result.data);
+        if (mode === 'overwrite') {
+          const ok = confirm('⚠️ 你选择了「全部覆盖」模式。\n\n这将清空云端已有的预估销量表，并完全用本次上传的 ' + result.data.length + ' 条数据替换。\n其他电脑下次打开时会拉取这份新表，旧的预估销量记录不再保留。\n\n确定要继续吗？');
+          if (!ok) {
+            statusEl.className = 'upload-status';
+            statusEl.textContent = '已取消：未覆盖云端预估销量表';
+            showToast('已取消，未做任何修改', 'warn');
+            return;
+          }
+          debugLog('[handleUpload] est_sales 全部覆盖：新 ' + slimNew.length + ' 条');
+          syncPromises.push(Store.setData('est_sales', slimNew));
+        } else {
+          // 增量更新（默认）：按 estSalesKey 增量合并，只更新预估销量字段
+          const old = Store.getData('est_sales');
+          const merged = mergeEstSalesIncremental(projectEstSalesSlim(old), slimNew);
+          debugLog('[handleUpload] est_sales 增量合并：旧 ' + old.length + ' + 新 ' + result.data.length + ' => ' + merged.length);
+          syncPromises.push(Store.setData('est_sales', merged));
+        }
       } else if (overwrite && fileType !== 'supplier') {
         syncPromises.push(Store.setData(fileType, result.data));
       } else {
@@ -4061,6 +4070,17 @@ const AdminUI = {
       desc.textContent = '清空云端已有运营看板明细，完全用本次上传的数据替换（旧数据不再保留）。';
     } else {
       desc.textContent = '按 渠道+SKU+FBA+组合+PO+国家 与销量大表匹配；同键只更新这4个字段，旧数据保留。';
+    }
+  },
+
+  // 切换预估销量上传模式说明
+  onEstSalesModeChange(mode) {
+    const desc = $('#est-sales-mode-desc');
+    if (!desc) return;
+    if (mode === 'overwrite') {
+      desc.textContent = '清空云端已有预估销量表，完全用本次上传的数据替换（旧数据不再保留）。';
+    } else {
+      desc.textContent = '按 渠道+SKU+FBA+组合+国家 与销量大表匹配；同键只更新预估销量，旧数据保留。';
     }
   },
 
@@ -6671,47 +6691,6 @@ function numericFilterMixin(idPrefix, filterDefs, renderFnName) {
 }
 
 
-// 预估销量覆盖：在运营/计划主表点击「10月预估销量」单元格，手动填写覆盖值。
-// 覆盖值写入 est_sales 记录的 estSalesOverride 字段（与导入值 sepEstSales 分离），重传周度监控明细表时受保护不被覆盖。
-function editEstSalesCell(ui, rowIdx, field, cell) {
-  if (ui.editingRow !== null && ui.editingRow !== undefined) return;
-  ui.editingRow = rowIdx;
-  const pageData = getPageData(ui.filteredData, ui.currentPage);
-  const row = pageData[rowIdx];
-  if (!row) { ui.editingRow = null; return; }
-  const oldVal = row[field] || '';
-  cell.innerHTML = `<input class="edit-input" type="number" value="${escapeHtml(oldVal)}" data-field="${field}" placeholder="数字，留空则不覆盖" style="text-align:right">`;
-  const input = cell.querySelector('input');
-  input.focus(); input.select();
-  const commit = () => {
-    let newVal = (input.value || '').trim();
-    if (newVal !== '') {
-      const num = parseFloat(newVal);
-      if (isNaN(num)) { showToast('请输入数字', 'error'); ui.editingRow = null; ui.renderTable(); return; }
-      newVal = String(num);
-    }
-    const all = Store.getData('est_sales');
-    const key = estSalesKey(row);
-    const idx = all.findIndex(r => estSalesKey(r) === key);
-    if (idx === -1) {
-      all.push({ channel: row.channel, channelSku: row.channelSku, isFba: row.isFba, isCombo: row.isCombo, country: row.country, estSalesOverride: newVal, sepEstSales: row.sepEstSalesImport || '' });
-    } else {
-      all[idx].estSalesOverride = newVal;
-    }
-    Store.setData('est_sales', all); // 触发 _mergeVersion++ 与云端同步
-    if (String(oldVal) !== String(newVal)) {
-      const role = (typeof OperationUI !== 'undefined' && ui === OperationUI) ? 'operation' : 'plan';
-      Store.addHistory({ user: ui.userName || '', role, action: '覆盖预估销量', detail: `${row.channelSku}/${field}: "${oldVal}"→"${newVal}"` });
-    }
-    ui.editingRow = null;
-    ui.renderTable();
-  };
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { input.blur(); }
-    if (e.key === 'Escape') { input.value = oldVal; input.blur(); }
-  });
-}
 
 const PlanUI = {
   userName: '', currentPage: 0, filteredData: [], isAdmin: false,
@@ -6730,8 +6709,6 @@ const PlanUI = {
     // 异步渲染主表格，避免进入工作台时长时间白屏
     requestAnimationFrame(() => { this.renderOverview(); this.renderAlerts(); this.renderBuyerUnfilled(); });
   },
-
-  startEditEst(rowIdx, field, cell) { editEstSalesCell(this, rowIdx, field, cell); },
 
   // 自动刷新专用：只重渲染数据，保留当前页码/搜索/筛选状态
   refresh() {
@@ -6843,7 +6820,6 @@ const PlanUI = {
 
     const pageData = getPageData(data, this.currentPage);
     const html = renderExpandableTable(COLS.plan, pageData, {
-      editable: true, editHandler: 'PlanUI.startEditEst',
       offset: this.currentPage * PAGE_SIZE, expandPrefix: 'plan', role: 'plan',
       clickHandler: 'PlanUI.showBuyerDetails', headerFilterUI: 'PlanUI'
     });
@@ -6937,8 +6913,6 @@ const OperationUI = {
     // 异步渲染主表格，避免进入工作台时长时间白屏
     requestAnimationFrame(() => { this.renderTable(); });
   },
-
-  startEditEst(rowIdx, field, cell) { editEstSalesCell(this, rowIdx, field, cell); },
 
   // 自动刷新专用：只重渲染数据，保留当前页码/搜索/筛选状态
   refresh() {
@@ -7058,7 +7032,6 @@ const OperationUI = {
 
     const pageData = getPageData(data, this.currentPage);
     const html = renderExpandableTable(COLS.operation, pageData, {
-      editable: true, editHandler: 'OperationUI.startEditEst',
       offset: this.currentPage * PAGE_SIZE, expandPrefix: 'op', role: 'op',
       clickHandler: 'OperationUI.showBuyerDetails', headerFilterUI: 'OperationUI'
     });
