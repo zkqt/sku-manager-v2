@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20261008v278';
+const APP_CODE_VERSION = '20261110v279';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -2043,7 +2043,7 @@ const ExcelParser = {
     }
 
     // 修复分组行错误前向填充：如果子表头已经带有月份关键词，且与分组行的月份冲突，
-    // 说明该分组行不该覆盖到这一列（常见于 9月/10月 数据列和分组行错位）。
+    // 说明该分组行不该覆盖到这一列（常见于 9月/11月 数据列和分组行错位）。
     // 冲突开始后，继续丢弃分组直到遇到下一个带月份关键词的子表头，避免“采购备注”这类
     // 无月份子字段被错误地挂到上一个冲突分组下。
     const monthRe = /(?:^|\D)(8|9|10|11|12|08|09)\s*月|2026(08|09|10|11|12)/;
@@ -2439,25 +2439,26 @@ const ExcelParser = {
         planManager: get(['计划负责人', '计划员']),
         sales3d: get(['3d']),
         monthlySales: get(['正常库存月销', '月销']),
-        // 销量大表近三月销量列（T-2 口径：实际表头月份即展示月份）。v276：窗口改为 26-8/26-9/26-10
-        salesJun: get(['2026-8', '2026年8', '26-8', '8月']),
-        salesJul: get(['2026-9', '2026年9', '26-9', '9月']),
-        salesAug: get(['2026-10', '2026年10', '26-10']),
+        // 销量大表近三月销量列（T-2 口径：实际表头月份即展示月份）。v279：窗口改为 26-9/26-10/26-11
+        // 仅用「年-月」关键词，避免裸「N月」误命中「N月发货目标」等交付列。
+        salesJun: get(['2026-9', '2026年9', '26-9']),
+        salesJul: get(['2026-10', '2026年10', '26-10']),
+        salesAug: get(['2026-11', '2026年11', '26-11']),
         overseasStock: get(['海外仓总库存', '海外仓']),
         inTransit: get(['在途']),
         domesticStock: get(['国内实仓库存', '国内实仓']),
         domesticOrder,
         availableDays: get(['可售天数']),
-        // 10月交付相关字段（v276：原9月字段统一改指销量大表(sales)的10月列；交付/剩余交付列名不带月份）
-        augTarget: get(['10月发货目标']) || gc(['10月'], ['目标']),
-        deliveryQty: get(['10月交付数量']) || gc(['10月'], ['交付数量', '交付']),
-        remainingDelivery: get(['10月剩余交付']) || gc(['10月'], ['剩余交付', '剩余']),
-        waitContainer: get(['10月待装柜']) || gc(['10月'], ['待装柜']),
-        loading: get(['10月装柜中']) || gc(['10月'], ['装柜中', '装柜']),
-        waitShip: get(['10月待发货']) || gc(['10月'], ['待发货']),
-        shipped: get(['10月已发货']) || gc(['10月'], ['已发货']),
-        logisticsPending: get(['10月物流未处理']) || gc(['10月'], ['物流未处理', '未处理']),
-        sepOnShelf: get(['10月预计上架（T-2）', '10月预计上架(T-2)', '10月预计上架']),
+        // v279：11月交付相关字段统一改指销量大表(sales)的11月列（10月组仍保留在源表，不再取用）
+        augTarget: get(['11月发货目标']) || gc(['11月'], ['目标']),
+        deliveryQty: get(['11月交付数量']) || gc(['11月'], ['交付数量', '交付']),
+        remainingDelivery: get(['11月剩余交付']) || gc(['11月'], ['剩余交付', '剩余']),
+        waitContainer: get(['11月待装柜']) || gc(['11月'], ['待装柜']),
+        loading: get(['11月装柜中']) || gc(['11月'], ['装柜中', '装柜']),
+        waitShip: get(['11月待发货']) || gc(['11月'], ['待发货']),
+        shipped: get(['11月已发货']) || gc(['11月'], ['已发货']),
+        logisticsPending: get(['11月物流未处理']) || gc(['11月'], ['物流未处理', '未处理']),
+        sepOnShelf: get(['11月预计上架（T-2）', '11月预计上架(T-2)', '11月预计上架']),
         warehouseType: get(['目的仓类型', '仓类型']),
         // 品类 / 新品 / PO 标记
         bigCategory: get(['大类']),
@@ -2503,8 +2504,8 @@ const ExcelParser = {
         isFba: get(['是否fba']),
         isCombo: get(['是否组合']),
         country: get(['国家']),
-        // v276：9月预估销量 → 10月预估销量（周度监控明细表「2026-10预估销量」列）
-        sepEstSales: get(['2026-10预估销量', '2026-10 预估销量', '10月预估销量']),
+        // v279：预估销量取周度监控明细表「2026-11预估销量」列（主表「11月预估销量」）
+        sepEstSales: get(['2026-11预估销量', '2026-11 预估销量', '11月预估销量']),
       };
     });
   },
@@ -2611,11 +2612,24 @@ const ExcelParser = {
         return '';
       };
 
-      // 8月/10月交期：优先精确匹配"待交付箱单交期"，再fallback到简单"交期"
-      // v276：sep* 字段（供运营/计划主表展示）改指 10月 列，与 oct* 同源
+      // v279：当前月分组 = 11月。若管理员上传的供应商追踪表尚未换版（仍只有 10月 列），
+      // 逐字段回退到 10月，避免整列空白；上传 11月 版后自动优先取新月份数据。
+      const MONTH_NOW = '11月', MONTH_PREV = '10月';
+      const gcM = (subs) => first(gc([MONTH_NOW], subs), gc([MONTH_PREV], subs));
+      const getM = (sfx) => first(get([MONTH_NOW + sfx]), get([MONTH_PREV + sfx]));
+      const remarkM = first(
+        gc([MONTH_NOW + '交期回复', MONTH_NOW], ['采购备注', '备注']),
+        gc([MONTH_PREV + '交期回复', MONTH_PREV], ['采购备注', '备注']),
+        findRemarkByPosition(MONTH_NOW), findRemarkByPosition(MONTH_PREV)
+      );
+      const dateM = first(
+        gc([MONTH_NOW], ['待交付箱单交期']), gc([MONTH_NOW], ['交期']), gc([MONTH_NOW], ['日期']), get([MONTH_NOW + '交期']),
+        gc([MONTH_PREV], ['待交付箱单交期']), gc([MONTH_PREV], ['交期']), gc([MONTH_PREV], ['日期']), get([MONTH_PREV + '交期'])
+      );
+      // 8月交期（历史字段）与当前月交期
       const augDateRaw = gc(['8月'], ['待交付箱单交期']) || gc(['8月'], ['交期']) || gc(['8月'], ['日期']) || get(['8月交期']);
-      const sepDateRaw = gc(['10月'], ['待交付箱单交期']) || gc(['10月'], ['交期']) || gc(['10月'], ['日期']) || get(['10月交期']);
-      const octDateRaw = gc(['10月'], ['待交付箱单交期']) || gc(['10月'], ['交期']) || gc(['10月'], ['日期']) || get(['10月交期']);
+      const sepDateRaw = dateM;
+      const octDateRaw = dateM;
 
       const result = {
         ...obj,
@@ -2636,32 +2650,33 @@ const ExcelParser = {
           findLike(['品类', '类目', '类别', 'ns名称', 'ns品类'], [])
         ),
         planner: get(['计划员']),
-        // 箱单字段（v276）：运营/计划主表「10月现货箱单/待交付箱单」展示用 aug* 前缀（历史遗留），
-        // 数据源改指供应商追踪表上传的 10月 箱单分组。
-        augSpotBox: first(gc(['10月'], ['现货箱单', '现货']), get(['10月现货箱单'])),
-        augPendingBoxCombo: first(gc(['10月'], ['待交付箱单-组合配件', '待交付箱单组合配件']), get(['10月待交付箱单-组合配件'])),
-        augPendingBox: first(gc(['10月'], ['待交付箱单']), get(['10月待交付箱单'])),
+        // 箱单字段（v279）：运营/计划主表「11月现货箱单/待交付箱单」用 aug* 前缀（历史遗留），
+        // 数据源指向供应商追踪表的当前月分组（11月；表未换版时回退 10月）。
+        augSpotBox: first(gcM(['现货箱单', '现货']), getM('现货箱单')),
+        augPendingBoxCombo: first(gcM(['待交付箱单-组合配件', '待交付箱单组合配件']), getM('待交付箱单-组合配件')),
+        augPendingBox: first(gcM(['待交付箱单']), getM('待交付箱单')),
         // 以下 aug* 可交/交期/备注字段保持匹配 8 月（历史字段，当前界面不再显示），避免和批量上传模板中的"8月"列冲突。
         augDeliverable: gc(['8月'], ['可交数量', '可交']),
         augDeliveryDate: excelDateToText(augDateRaw, 8),
         augRemark: first(gc(['8月交期回复', '8月'], ['采购备注', '备注']), findRemarkByPosition('8月')),
-        // sep* 字段（v276）：原匹配 9月 列，现改指 10月 列 —— 运营/计划主表「10月可交数量/10月交期/10月采购备注」
-        sepSpotBox: gc(['10月'], ['现货箱单', '现货']),
-        sepPendingBoxCombo: first(gc(['10月'], ['待交付箱单-组合配件', '待交付箱单组合配件']), get(['10月待交付箱单-组合配件'])),
-        sepPendingBox: first(gc(['10月'], ['待交付箱单']), get(['10月待交付箱单'])),
+        // sep* 字段（v279）：改指当前月列 —— 运营/计划主表「11月可交数量/11月交期/11月采购备注」
+        sepSpotBox: gcM(['现货箱单', '现货']),
+        sepPendingBoxCombo: first(gcM(['待交付箱单-组合配件', '待交付箱单组合配件']), getM('待交付箱单-组合配件')),
+        sepPendingBox: first(gcM(['待交付箱单']), getM('待交付箱单')),
+        // 「202610目标 / 202611目标」是供应商追踪表里固定的未来月目标列，不随当前月切换。
         sepTargetSup: first(get(['202610目标']), get(['10月目标']), get(['202610']), gc(['10月'], ['目标']), gc(['202610'], ['目标'])),
-        sepDeliverable: gc(['10月'], ['可交数量', '可交']),
-        sepDeliveryDate: excelDateToText(sepDateRaw, 10),
-        sepRemark: first(gc(['10月交期回复', '10月'], ['采购备注', '备注']), findRemarkByPosition('10月')),
-        // 10月
-        octSpotBox: gc(['10月'], ['现货箱单', '现货']),
-        octPendingBoxCombo: first(gc(['10月'], ['待交付箱单-组合配件', '待交付箱单组合配件']), get(['10月待交付箱单-组合配件'])),
-        octPendingBox: first(gc(['10月'], ['待交付箱单']), get(['10月待交付箱单'])),
+        sepDeliverable: gcM(['可交数量', '可交']),
+        sepDeliveryDate: excelDateToText(sepDateRaw, 11),
+        sepRemark: remarkM,
+        // 当前月（采购页可编辑字段 oct*）
+        octSpotBox: gcM(['现货箱单', '现货']),
+        octPendingBoxCombo: first(gcM(['待交付箱单-组合配件', '待交付箱单组合配件']), getM('待交付箱单-组合配件')),
+        octPendingBox: first(gcM(['待交付箱单']), getM('待交付箱单')),
         octTargetSup: first(get(['202610目标']), get(['10月目标']), get(['202610']), get(['10月']), gc(['10月'], ['目标']), gc(['202610'], ['目标'])),
         novTargetSup: first(get(['202611目标']), get(['11月目标']), get(['202611']), get(['11月']), gc(['11月'], ['目标']), gc(['202611'], ['目标'])),
-        octDeliverable: gc(['10月'], ['可交数量', '可交']),
-        octDeliveryDate: excelDateToText(octDateRaw, 10),
-        octRemark: first(gc(['10月交期回复', '10月'], ['采购备注', '备注']), findRemarkByPosition('10月')),
+        octDeliverable: gcM(['可交数量', '可交']),
+        octDeliveryDate: excelDateToText(octDateRaw, 11),
+        octRemark: remarkM,
       };
 
       // Debug: 第一行的交期匹配结果
@@ -2854,7 +2869,7 @@ function projectOpsDetailSlim(rows) {
 // 管理员上传「周度监控明细表」，只保留 5 个身份字段（渠道/渠道SKU/FBA/组合/国家，无PO）
 // + 1 个数据字段（sepEstSales=2026-9预估销量），按键增量合并后投影到运营/计划主表「9月预估销量」列。
 const EST_SALES_KEY_FIELDS = ['channel', 'channelSku', 'isFba', 'isCombo', 'country'];
-// DATA_FIELDS 为上传可覆盖的字段（此处仅 1 个：sepEstSales=2026-10预估销量）
+// DATA_FIELDS 为上传可覆盖的字段（此处仅 1 个：sepEstSales=2026-11预估销量）
 const EST_SALES_DATA_FIELDS = ['sepEstSales'];
 const EST_SALES_SLIM_FIELDS = [...EST_SALES_KEY_FIELDS, ...EST_SALES_DATA_FIELDS];
 function estSalesKey(r) {
@@ -2999,8 +3014,8 @@ function getProtectedFields(fileType) {
   if (fileType === 'supplier') {
     // 供应商追踪表（追踪表本身即权威数据源）：
     // 上传后整表替换原数据，仅保留采购员手动填写的以下 3 个字段（云端/本地已存的旧值优先）：
-    // 10月的 交期、可交数量、采购备注（采购页可编辑字段均为 oct*）。
-    // v276：sep* 字段已改指 10月 列，不再受保护——避免旧 9月 数据覆盖新上传的 10月 值。
+    // 11月的 交期、可交数量、采购备注（采购页可编辑字段均为 oct*）。
+    // v279：sep* 字段已改指当前月列，不再受保护——避免旧值覆盖新上传的 11月 数据。
     return ['octDeliveryDate', 'octDeliverable', 'octRemark'];
   }
   if (fileType === 'replenish') {
@@ -3083,17 +3098,19 @@ function _rawColByName(raw, monthNorm, subNorms) {
 function backfillRichDatesIntoRaw(raw, rich) {
   if (!raw || !rich) return;
   const specs = [
-    { f: 'sepDeliveryDate', month: '10月', subs: ['交期'] },
-    { f: 'sepDeliverable', month: '10月', subs: ['可交'] },
-    { f: 'sepRemark', month: '10月', subs: ['采购备注', '备注'] },
-    { f: 'octDeliveryDate', month: '10月', subs: ['交期'] },
-    { f: 'octDeliverable', month: '10月', subs: ['可交'] },
-    { f: 'octRemark', month: '10月', subs: ['采购备注', '备注'] },
+    { f: 'sepDeliveryDate', month: '11月', subs: ['交期'] },
+    { f: 'sepDeliverable', month: '11月', subs: ['可交'] },
+    { f: 'sepRemark', month: '11月', subs: ['采购备注', '备注'] },
+    { f: 'octDeliveryDate', month: '11月', subs: ['交期'] },
+    { f: 'octDeliverable', month: '11月', subs: ['可交'] },
+    { f: 'octRemark', month: '11月', subs: ['采购备注', '备注'] },
   ];
   for (const s of specs) {
     const v = rich[s.f];
     if (v === '' || v == null) continue;
-    const col = _rawColByName(raw, s.month, s.subs);
+    // v279：优先回填到 11月 列；供应商追踪表尚未换版时回退 10月 列
+    let col = _rawColByName(raw, s.month, s.subs);
+    if (col == null) col = _rawColByName(raw, '10月', s.subs);
     if (col != null && raw[col] !== v) raw[col] = v;
   }
 }
@@ -3330,7 +3347,7 @@ const COLS = {
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
     { f: 'planManager', l: '计划负责人' },
-    { f: 'sepEstSales', l: '10月预估销量' },
+    { f: 'sepEstSales', l: '11月预估销量' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3339,19 +3356,19 @@ const COLS = {
     { f: 'stockoutDate', l: '预计断货日期', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
     { f: 'nextBatchDate', l: '最近批次预计到货日期', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
     { f: 'nextBatchQty', l: '最近批次数量', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
-    { f: 'augSpotBox', l: '10月现货箱单' },
+    { f: 'augSpotBox', l: '11月现货箱单' },
     { f: 'availableDays', l: '可售天数' },
-    { f: 'augTarget', l: '10月目标(T-2)', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
+    { f: 'augTarget', l: '11月目标(T-2)', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
     { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
     { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
-    { f: 'sepOnShelf', l: '10月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
+    { f: 'sepOnShelf', l: '11月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
     { f: 'waitContainer', l: '待装柜' },
     { f: 'loading', l: '装柜中' },
     { f: 'waitShip', l: '待发货' },
     { f: 'logisticsPending', l: '物流未处理' },
-    { f: 'sepDeliverable', l: '10月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
-    { f: 'sepDeliveryDate', l: '10月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
-    { f: 'sepRemark', l: '10月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
+    { f: 'sepDeliverable', l: '11月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
+    { f: 'sepDeliveryDate', l: '11月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
+    { f: 'sepRemark', l: '11月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
     { f: 'stockHealthStatus', l: '库存健康状态', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
   ],
 
@@ -3366,7 +3383,7 @@ const COLS = {
     { f: 'planManager', l: '计划负责人', filter: 'multi', filterKey: 'plan-manager', filterField: 'planManager' },
     { f: 'opManager', l: '运营负责人', filter: 'multi', filterKey: 'op-manager', filterField: 'opManager' },
     { f: 'priorityBuyer', l: '采购员', click: 'buyer', nag: true, filter: 'multi', filterKey: 'buyer', filterField: 'priorityBuyer' },
-    { f: 'sepEstSales', l: '10月预估销量' },
+    { f: 'sepEstSales', l: '11月预估销量' },
     { f: 'overseasStock', l: '海外仓库存(T-2)' },
     { f: 'inTransit', l: '在途(T-2)' },
     { f: 'domesticStock', l: '国内实仓(T-2)' },
@@ -3375,19 +3392,19 @@ const COLS = {
     { f: 'stockoutDate', l: '预计断货日期', filter: 'multi', filterKey: 'stockout-date', filterField: 'stockoutDate' },
     { f: 'nextBatchDate', l: '最近批次预计到货日期', filter: 'multi', filterKey: 'next-batch-date', filterField: 'nextBatchDate' },
     { f: 'nextBatchQty', l: '最近批次数量', filter: 'numeric', filterKey: 'next-batch-qty', filterField: 'nextBatchQty' },
-    { f: 'augSpotBox', l: '10月现货箱单' },
+    { f: 'augSpotBox', l: '11月现货箱单' },
     { f: 'availableDays', l: '可售天数' },
-    { f: 'augTarget', l: '10月目标(T-2)', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
+    { f: 'augTarget', l: '11月目标(T-2)', filter: 'numeric', filterKey: 'aug-target', filterField: 'augTarget' },
     { f: 'deliveryQty', l: '交付数量', filter: 'numeric', filterKey: 'delivery-qty', filterField: 'deliveryQty' },
     { f: 'remainingDelivery', l: '剩余交付', filter: 'numeric', filterKey: 'remaining-delivery', filterField: 'remainingDelivery' },
-    { f: 'sepOnShelf', l: '10月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
+    { f: 'sepOnShelf', l: '11月预计上架(T-2)', filter: 'numeric', filterKey: 'sep-on-shelf', filterField: 'sepOnShelf' },
     { f: 'waitContainer', l: '待装柜' },
     { f: 'loading', l: '装柜中' },
     { f: 'waitShip', l: '待发货' },
     { f: 'logisticsPending', l: '物流未处理' },
-    { f: 'sepDeliverable', l: '10月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
-    { f: 'sepDeliveryDate', l: '10月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
-    { f: 'sepRemark', l: '10月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
+    { f: 'sepDeliverable', l: '11月可交数量', filter: 'numeric', filterKey: 'sep-deliverable', filterField: 'sepDeliverable' },
+    { f: 'sepDeliveryDate', l: '11月交期', filter: 'multi', filterKey: 'sep-delivery-date', filterField: 'sepDeliveryDate' },
+    { f: 'sepRemark', l: '11月采购备注', filter: 'multi', filterKey: 'sep-remark', filterField: 'sepRemark' },
     { f: 'stockHealthStatus', l: '库存健康状态', filter: 'multi', filterKey: 'stock-health-status', filterField: 'stockHealthStatus' },
   ],
 
@@ -3402,14 +3419,14 @@ const COLS = {
     salesData: [
       { f: 'sales3d', l: '3d(T-2)' },
       { f: 'monthlySales', l: '月销(T)' },
-      { f: 'salesJun', l: '26-8月' },
-      { f: 'salesJul', l: '26-9月(T-2)' },
-      { f: 'salesAug', l: '26-10月(T-2)' },
+      { f: 'salesJun', l: '26-9月' },
+      { f: 'salesJul', l: '26-10月(T-2)' },
+      { f: 'salesAug', l: '26-11月(T-2)' },
     ],
   },
 
   // 采购-供应商追踪表列（工厂=供应商，只显示一个）
-  // v267：箱单三列改为 10月（oct 字段，来自供应商追踪表上传的 10月 列）；
+  // v279：箱单三列随当前月切为 11月（oct 字段，来自供应商追踪表上传的 11月 分组）；
   // 移除 销售状态/202609目标/9月目标/交付数量/剩余交付/9月预计上架/供应商库存/9月可交数量/9月交期/9月采购备注
   supplier: [
     { f: 'channel', l: '渠道', filter: 'multi', filterKey: 'channel', filterField: 'channel' },
@@ -3424,17 +3441,17 @@ const COLS = {
     { f: 'supplierStatus', l: '供应商状态', filter: 'multi', filterKey: 'supplier-status', filterField: 'supplierStatus' },
     { f: 'octTargetSup', l: '202610目标', filter: 'numeric', filterKey: 'oct-target-sup', filterField: 'octTargetSup' },
     { f: 'novTargetSup', l: '202611目标', filter: 'numeric', filterKey: 'nov-target-sup', filterField: 'novTargetSup' },
-    { f: 'octPendingBoxCombo', l: '10月待交付箱单-组合配件', filter: 'numeric', filterKey: 'pending-combo', filterField: 'octPendingBoxCombo' },
-    { f: 'octPendingBox', l: '10月待交付箱单', filter: 'numeric', filterKey: 'pending', filterField: 'octPendingBox' },
-    { f: 'octSpotBox', l: '10月现货箱单', filter: 'numeric', filterKey: 'oct-spot-box', filterField: 'octSpotBox' },
-    { f: 'octDeliverable', l: '10月可交数量', edit: true, filter: 'numeric', filterKey: 'oct-deliverable', filterField: 'octDeliverable' },
-    { f: 'octDeliveryDate', l: '10月交期', edit: true, filter: 'multi', filterKey: 'oct-delivery-date', filterField: 'octDeliveryDate' },
-    { f: 'octRemark', l: '10月采购备注', edit: true, filter: 'multi', filterKey: 'oct-remark', filterField: 'octRemark' },
+    { f: 'octPendingBoxCombo', l: '11月待交付箱单-组合配件', filter: 'numeric', filterKey: 'pending-combo', filterField: 'octPendingBoxCombo' },
+    { f: 'octPendingBox', l: '11月待交付箱单', filter: 'numeric', filterKey: 'pending', filterField: 'octPendingBox' },
+    { f: 'octSpotBox', l: '11月现货箱单', filter: 'numeric', filterKey: 'oct-spot-box', filterField: 'octSpotBox' },
+    { f: 'octDeliverable', l: '11月可交数量', edit: true, filter: 'numeric', filterKey: 'oct-deliverable', filterField: 'octDeliverable' },
+    { f: 'octDeliveryDate', l: '11月交期', edit: true, filter: 'multi', filterKey: 'oct-delivery-date', filterField: 'octDeliveryDate' },
+    { f: 'octRemark', l: '11月采购备注', edit: true, filter: 'multi', filterKey: 'oct-remark', filterField: 'octRemark' },
   ],
 };
 
 // 采购页“导出Excel / 批量上传”使用的列定义：保证导出→填写→上传是同一份表头，可交数量/交期/备注能写回 supplier
-// v267：与跟踪表视图同步——箱单三列改为 10月（oct 字段），移除 9月/销量类列
+// v279：与跟踪表视图同步——箱单三列改为 11月（oct 字段），移除 9月/销量类列
 const PURCHASE_TRACKING_EXPORT_COLS = [
   { f: 'channel', l: '渠道' },
   { f: 'channelSku', l: 'SKU' },
@@ -3448,12 +3465,12 @@ const PURCHASE_TRACKING_EXPORT_COLS = [
   { f: 'supplierStatus', l: '供应商状态' },
   { f: 'octTargetSup', l: '202610目标' },
   { f: 'novTargetSup', l: '202611目标' },
-  { f: 'octPendingBoxCombo', l: '10月待交付箱单-组合配件' },
-  { f: 'octPendingBox', l: '10月待交付箱单' },
-  { f: 'octSpotBox', l: '10月现货箱单' },
-  { f: 'octDeliverable', l: '10月可交数量' },
-  { f: 'octDeliveryDate', l: '10月交期' },
-  { f: 'octRemark', l: '10月采购备注' },
+  { f: 'octPendingBoxCombo', l: '11月待交付箱单-组合配件' },
+  { f: 'octPendingBox', l: '11月待交付箱单' },
+  { f: 'octSpotBox', l: '11月现货箱单' },
+  { f: 'octDeliverable', l: '11月可交数量' },
+  { f: 'octDeliveryDate', l: '11月交期' },
+  { f: 'octRemark', l: '11月采购备注' },
 ];
 
 // 供应商库存列标题的上传日期标注
@@ -3992,7 +4009,7 @@ const AdminUI = {
             }
           } catch (e) { debugLog('[handleUpload] supplier 云端找回失败，降级用本地: ' + (e && e.message)); }
           // 供应商追踪表（以9月发货明细为底表，追踪表即权威数据源）：
-          // ① 新旧表都有的 SKU：整行用新表覆盖，仅采购员手动填的 8/9/10月交期/可交数量/采购备注保留旧值；
+          // ① 新旧表都有的 SKU：整行用新表覆盖，仅采购员手动填的 8/9/11月交期/可交数量/采购备注保留旧值；
           // ② 新表没有的孤儿 SKU：只保留身份字段 + 采购员手动字段，其余跟踪表字段清空。
           merged = mergeRecordsPreserve(baseOld, result.data, OVERWRITE_KEYFN.supplier, getProtectedFields('supplier'),
             { clearOrphan: true, keyFields: ['channel', 'channelSku', 'isFba', 'isCombo', 'country', 'buyer', 'supplier'] });
@@ -5182,7 +5199,7 @@ const PurchaseUI = {
     if (page < 0) page = 0;
     this._catPage[safeId] = page;
     const pageData = getPageData(data, page);
-    // 品类负责人分表仅显示用户指定的列（v267：与跟踪表同步改为 10月 列）
+    // 品类负责人分表仅显示用户指定的列（v279：与跟踪表同步改为 11月 列）
     const CAT_TAB_FIELDS = new Set([
       'channel', 'channelSku', 'comboSku', 'supplier', 'supplierStatus',
       'octPendingBox', 'octSpotBox', 'octDeliverable', 'octDeliveryDate', 'octRemark'
@@ -5612,7 +5629,7 @@ const PurchaseUI = {
     }
     // 表头多选筛选（渠道/品类/供应商/目的国家/采购员/供应商状态/交期/备注）
     data = this.applyMultiFilters(data);
-    // 表头数值筛选（9月目标/交付数量/剩余交付/202609-10目标/待交付箱单/现货箱单/8-10月可交数量）
+    // 表头数值筛选（9月目标/交付数量/剩余交付/202609-10目标/待交付箱单/现货箱单/8-11月可交数量）
     data = this.applyNumericFilters(data);
     this.filteredData = data;
     this.currentPage = Math.min(this.currentPage, Math.ceil(data.length / PAGE_SIZE) - 1);
@@ -6284,6 +6301,7 @@ const PurchaseUI = {
       const extraAliases = {
         '9月可交': 'sepDeliverable', '9月待交付箱单交期': 'sepDeliveryDate', '9月备注': 'sepRemark',
         '10月可交': 'octDeliverable', '10月待交付箱单交期': 'octDeliveryDate', '10月备注': 'octRemark',
+        '11月可交': 'octDeliverable', '11月待交付箱单交期': 'octDeliveryDate', '11月备注': 'octRemark',
         '渠道sku': 'channelSku', 'sku': 'channelSku',
       };
       Object.entries(extraAliases).forEach(([h, f]) => { headerToField[normalizeText(h)] = f; });
@@ -6296,7 +6314,7 @@ const PurchaseUI = {
 
       const allSupplier = Store.getData('supplier');
       let updatedRows = 0, updatedFields = 0, skipped = 0;
-      const monthForField = (f) => f.startsWith('sep') ? 9 : (f.startsWith('oct') ? 10 : 8);
+      const monthForField = (f) => (f.startsWith('sep') || f.startsWith('oct')) ? 11 : 8;
 
       for (let i = hi + 1; i < rows.length; i++) {
         const r = rows[i];
@@ -7070,7 +7088,7 @@ const OperationUI = {
 
     body += '<h4>供应商追踪 - 工厂/采购员明细</h4>';
     if (supplierRows.length > 0) {
-      body += '<div class="table-scroll"><table class="data-table"><thead><tr><th>供应商</th><th>采购员</th><th>10月可交</th><th>10月交期</th></tr></thead><tbody>';
+      body += '<div class="table-scroll"><table class="data-table"><thead><tr><th>供应商</th><th>采购员</th><th>11月可交</th><th>11月交期</th></tr></thead><tbody>';
       supplierRows.forEach(r => {
         body += `<tr><td>${escapeHtml(r.supplier)}</td><td>${escapeHtml(r.buyer)}</td><td>${escapeHtml(r.octDeliverable)}</td><td>${escapeHtml(r.octDeliveryDate)}</td></tr>`;
       });
@@ -7115,11 +7133,11 @@ const OperationUI = {
 
 // 计划/运营页接入 Excel 数值筛选（表头触发：9月目标、剩余交付）
 const PLAN_OP_NUM_FILTERS = [
-  { prop: 'augTargetFilter', col: 'aug-target', field: 'augTarget', label: '10月目标(T-2)' },
+  { prop: 'augTargetFilter', col: 'aug-target', field: 'augTarget', label: '11月目标(T-2)' },
   { prop: 'deliveryQtyFilter', col: 'delivery-qty', field: 'deliveryQty', label: '交付数量' },
   { prop: 'remainingDeliveryFilter', col: 'remaining-delivery', field: 'remainingDelivery', label: '剩余交付' },
-  { prop: 'sepOnShelfFilter', col: 'sep-on-shelf', field: 'sepOnShelf', label: '10月预计上架' },
-  { prop: 'sepDeliverableFilter', col: 'sep-deliverable', field: 'sepDeliverable', label: '10月可交数量' },
+  { prop: 'sepOnShelfFilter', col: 'sep-on-shelf', field: 'sepOnShelf', label: '11月预计上架' },
+  { prop: 'sepDeliverableFilter', col: 'sep-deliverable', field: 'sepDeliverable', label: '11月可交数量' },
   { prop: 'nextBatchQtyFilter', col: 'next-batch-qty', field: 'nextBatchQty', label: '最近批次数量' },
 ];
 Object.assign(PlanUI, numericFilterMixin('plan', PLAN_OP_NUM_FILTERS, 'renderOverview'));
@@ -7224,8 +7242,8 @@ const PLAN_MULTI_FILTERS = [
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
   { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期' },
   { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期' },
-  { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '10月交期' },
-  { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '10月采购备注' },
+  { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '11月交期' },
+  { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '11月采购备注' },
   { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态' },
 ];
 const OP_MULTI_FILTERS = [
@@ -7238,8 +7256,8 @@ const OP_MULTI_FILTERS = [
   { col: 'buyer', prop: 'buyerFilter', field: 'priorityBuyer', label: '采购员' },
   { col: 'stockout-date', prop: 'stockoutDateFilter', field: 'stockoutDate', label: '预计断货日期' },
   { col: 'next-batch-date', prop: 'nextBatchDateFilter', field: 'nextBatchDate', label: '最近批次预计到货日期' },
-  { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '10月交期' },
-  { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '10月采购备注' },
+  { col: 'sep-delivery-date', prop: 'sepDeliveryDateFilter', field: 'sepDeliveryDate', label: '11月交期' },
+  { col: 'sep-remark', prop: 'sepRemarkFilter', field: 'sepRemark', label: '11月采购备注' },
   { col: 'stock-health-status', prop: 'stockHealthStatusFilter', field: 'stockHealthStatus', label: '库存健康状态' },
 ];
 Object.assign(PlanUI, headerMultiSelectMixin('plan', PLAN_MULTI_FILTERS, 'renderOverview', 'planManager'));
@@ -7255,8 +7273,8 @@ const PURCHASE_MULTI_FILTERS = [
   { col: 'supplier-status', prop: 'supplierStatusFilter', field: 'supplierStatus', label: '供应商状态' },
   { col: 'sup-is-combo', prop: 'supIsComboFilter', field: 'isCombo', label: '是否组合' },
   { col: 'sup-is-fba', prop: 'supIsFbaFilter', field: 'isFba', label: '是否FBA' },
-  { col: 'oct-delivery-date', prop: 'octDeliveryDateFilter', field: 'octDeliveryDate', label: '10月交期' },
-  { col: 'oct-remark', prop: 'octRemarkFilter', field: 'octRemark', label: '10月采购备注' },
+  { col: 'oct-delivery-date', prop: 'octDeliveryDateFilter', field: 'octDeliveryDate', label: '11月交期' },
+  { col: 'oct-remark', prop: 'octRemarkFilter', field: 'octRemark', label: '11月采购备注' },
 ];
 Object.assign(PurchaseUI, headerMultiSelectMixin('purchase', PURCHASE_MULTI_FILTERS, 'renderSupplier'));
 // 多选面板选项来源用采购自己的富数据（getMyRichData 中已计算好 categoryDisplay 等派生字段）
@@ -7266,14 +7284,14 @@ PurchaseUI._hmGetSourceData = function () {
   return Merger.getMergedData();
 };
 
-// 采购页接入表头数值筛选（202610-11目标/10月待交付箱单/10月现货箱单/10月可交数量；v267 移除 9月 类列）
+// 采购页接入表头数值筛选（202610-11目标/11月待交付箱单/11月现货箱单/11月可交数量；v267 移除 9月 类列）
 const PURCHASE_NUM_FILTERS = [
   { prop: 'octTargetSupFilter', col: 'oct-target-sup', field: 'octTargetSup', label: '202610目标' },
   { prop: 'novTargetSupFilter', col: 'nov-target-sup', field: 'novTargetSup', label: '202611目标' },
-  { prop: 'pendingComboFilter', col: 'pending-combo', field: 'octPendingBoxCombo', label: '10月待交付箱单-组合配件' },
-  { prop: 'pendingFilter', col: 'pending', field: 'octPendingBox', label: '10月待交付箱单' },
-  { prop: 'octSpotBoxFilter', col: 'oct-spot-box', field: 'octSpotBox', label: '10月现货箱单' },
-  { prop: 'octDeliverableFilter', col: 'oct-deliverable', field: 'octDeliverable', label: '10月可交数量' },
+  { prop: 'pendingComboFilter', col: 'pending-combo', field: 'octPendingBoxCombo', label: '11月待交付箱单-组合配件' },
+  { prop: 'pendingFilter', col: 'pending', field: 'octPendingBox', label: '11月待交付箱单' },
+  { prop: 'octSpotBoxFilter', col: 'oct-spot-box', field: 'octSpotBox', label: '11月现货箱单' },
+  { prop: 'octDeliverableFilter', col: 'oct-deliverable', field: 'octDeliverable', label: '11月可交数量' },
 ];
 Object.assign(PurchaseUI, numericFilterMixin('purchase', PURCHASE_NUM_FILTERS, 'renderSupplier'));
 

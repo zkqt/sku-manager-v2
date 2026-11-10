@@ -9,11 +9,11 @@
   <title>供应链协同管理系统</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preload" as="image" href="hero-bg.jpg" type="image/jpeg">
-  <link rel="stylesheet" href="style.css?v=20261008v278">
+  <link rel="stylesheet" href="style.css?v=20261110v279">
   <!-- 依赖本地化 + defer 延迟加载：库脚本不再阻塞首屏渲染，主页(Hero/角色卡)可秒出；Excel 解析/云端同步用到的库在后台下载 -->
-  <script defer src="supabase.min.js?v=20261008v278"></script>
+  <script defer src="supabase.min.js?v=20261110v279"></script>
   <script defer>if(typeof window.supabase==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';document.head.appendChild(s);}</script>
-  <script defer src="lz-string.min.js?v=20261008v278"></script>
+  <script defer src="lz-string.min.js?v=20261110v279"></script>
   <script defer>if(typeof window.LZString==='undefined'){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js';document.head.appendChild(s);}</script>
 </head>
 <body>
@@ -159,8 +159,8 @@
             <span class="upload-status" id="status-ops_detail"></span>
           </div>
           <div class="upload-zone" data-filetype="est_sales">
-            <h3>📈 预估销量表（云端同步·增量更新）</h3>
-            <p class="upload-desc">周度监控明细表：只取「2026-10预估销量」→ 主表「10月预估销量」列（海外仓库存左侧）</p>
+            <h3>📈 预估销量表（云端同步·增量更新 / 全部覆盖）</h3>
+            <p class="upload-desc">周度监控明细表：只取「2026-11预估销量」→ 主表「11月预估销量」列（海外仓库存左侧）</p>
             <div style="display:flex;gap:16px;align-items:center;margin:8px 0 4px;font-size:13px;">
               <label style="cursor:pointer;">
                 <input type="radio" name="est-sales-upload-mode" value="incremental" checked onchange="AdminUI.onEstSalesModeChange(this.value)"> 增量更新（推荐）
@@ -177,7 +177,7 @@
             <span class="upload-status" id="status-est_sales"></span>
           </div>
           <div class="upload-zone" data-filetype="delivery">
-            <h3>📦 10月发货与采购交付明细（管理员上传，同步云端）</h3>
+            <h3>📦 11月发货与采购交付明细（管理员上传，同步云端）</h3>
             <p class="upload-desc">发货目标/交付/装柜/物流数据，上传后全站自动同步</p>
             <label class="file-label">
               <input type="file" accept=".xlsx,.xls" onchange="AdminUI.handleUpload('delivery', this.files[0])">
@@ -557,8 +557,8 @@
     <!-- Toast -->
     <div id="toast" class="toast"></div>
   </div>
-  <script defer src="config.js?v=20261008v278"></script>
-  <script defer src="sync_config.js?v=20261008v278"></script>
-  <script defer src="app.js?v=20261008v278"></script>
+  <script defer src="config.js?v=20261110v279"></script>
+  <script defer src="sync_config.js?v=20261110v279"></script>
+  <script defer src="app.js?v=20261110v279"></script>
 </body>
 </html>
