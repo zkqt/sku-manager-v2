@@ -143,7 +143,7 @@ function rowCategoryOf(r) {
 // 数据版本：每次部署大版本升级时自动清空旧 localStorage，避免旧解析数据导致字段显示为空
 const APP_DATA_VERSION = '20260907v75';
 // 代码版本：仅用于控制台确认用户加载到的是哪一版，不触发 localStorage 清空
-const APP_CODE_VERSION = '20261110v279';
+const APP_CODE_VERSION = '20261110v280';
 console.log('[App] code version:', APP_CODE_VERSION);
 (function checkDataVersion() {
   try {
@@ -731,15 +731,15 @@ const Sync = {
   _syncQueue: [],
 
   // 该表格是否被用户勾选为要同步（未勾选则不传云端，也不自动同步）
+  // v280 修复：改为与 SyncSel.load() 一致的合并口径（defaults ∪ hidden ∪ userSel）。
+  // 旧实现直接读原始 localStorage 清单，老版本时期保存的清单缺 sales（曾 localOnly）/ops_detail/est_sales 等新表，
+  // 导致上传后推送被静默跳过——本地显示成功、云端却停在旧版本（2026-11-10 事故根因）。
   shouldSync(type) {
     const def = SYNC_TYPES.find(t => t.key === type);
     if (def && def.localOnly) return false; // 本地大表永不上云
     if (def && def.hidden) return true;      // 隐藏类型（差异基线）始终同步
     try {
-      const raw = localStorage.getItem('skuv2_sync_sel');
-      if (!raw) return !def || (!def.localOnly && !def.defaultOff);
-      const a = JSON.parse(raw);
-      return Array.isArray(a) ? a.includes(type) : true;
+      return SyncSel.load().includes(type);
     } catch (e) { return !def || (!def.localOnly && !def.defaultOff); }
   },
 
